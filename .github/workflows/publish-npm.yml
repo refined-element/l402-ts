@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'package.json'
+      - '.github/workflows/publish-npm.yml'
 
 jobs:
   check-version:
@@ -19,11 +20,16 @@ jobs:
       - name: Check if version changed
         id: check
         run: |
-          PREV=$(git diff HEAD~1 HEAD -- package.json | grep -A0 '"version"' | head -1 | grep -oP '\d+\.\d+\.\d+' || echo "")
           CURR=$(node -p "require('./package.json').version")
-          if [ -n "$PREV" ] && [ "$PREV" != "$CURR" ]; then
+          PUBLISHED=$(npm view l402-requests version 2>/dev/null || echo "")
+          if [ -z "$PUBLISHED" ]; then
+            echo "First publish — package not yet on npm"
+            echo "changed=true" >> $GITHUB_OUTPUT
+          elif [ "$PUBLISHED" != "$CURR" ]; then
+            echo "Version changed: $PUBLISHED -> $CURR"
             echo "changed=true" >> $GITHUB_OUTPUT
           else
+            echo "Version unchanged: $CURR"
             echo "changed=false" >> $GITHUB_OUTPUT
           fi
 
