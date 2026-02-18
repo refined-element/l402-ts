@@ -1,0 +1,74 @@
+{
+  "name": "l402-requests",
+  "version": "0.1.0",
+  "description": "Auto-paying L402 HTTP client for TypeScript — three lines of code and paid APIs just work",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "l402",
+    "lightning",
+    "bitcoin",
+    "payment",
+    "http",
+    "fetch",
+    "lsat",
+    "micropayment",
+    "ai",
+    "agent"
+  ],
+  "author": "Refined Element",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/refined-element/l402-ts.git"
+  },
+  "homepage": "https://docs.lightningenable.com/docs/tools/l402-ts",
+  "bugs": {
+    "url": "https://github.com/refined-element/l402-ts/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "peerDependencies": {
+    "@noble/secp256k1": ">=2.0.0",
+    "ws": ">=8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@noble/secp256k1": {
+      "optional": true
+    },
+    "ws": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^2.0.0"
+  }
+}
