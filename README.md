@@ -174,6 +174,25 @@ try {
 - **Python**: [`l402-requests`](https://pypi.org/project/l402-requests) — same "three lines of code" experience for Python
 - **.NET**: [`L402Requests`](https://www.nuget.org/packages/L402Requests) — same experience for .NET
 
+## Example: MaximumSats API
+
+[MaximumSats](https://maximumsats.com) provides paid Lightning Network APIs including AI DVM, WoT reports, Nostr analysis, and more. Use l402-requests to automatically pay for these endpoints:
+
+```typescript
+import { get } from 'l402-requests';
+
+const response = await get("https://maximumsats.com/api/dvm");
+const data = await response.json();
+```
+
+Set your wallet via environment variable:
+
+```bash
+export STRIKE_API_KEY="your-strike-api-key"
+```
+
+The library automatically handles the L402 payment protocol — you just get the data.
+
 ## Source Code
 
 [GitHub Repository](https://github.com/refined-element/l402-ts) (MIT License)
