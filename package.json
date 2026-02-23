@@ -1,6 +1,6 @@
 {
   "name": "l402-requests",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Auto-paying L402 HTTP client for TypeScript — three lines of code and paid APIs just work",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -38,7 +38,12 @@
     "lsat",
     "micropayment",
     "ai",
-    "agent"
+    "agent",
+    "mcp",
+    "agentic",
+    "api",
+    "paywall",
+    "402"
   ],
   "author": "Refined Element",
   "license": "MIT",
@@ -70,5 +75,9 @@
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
     "vitest": "^2.0.0"
+  },
+  "funding": {
+    "type": "lightning",
+    "url": "https://lightningenable.com"
   }
 }

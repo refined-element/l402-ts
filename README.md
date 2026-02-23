@@ -1,5 +1,9 @@
 # l402-requests
 
+[![npm version](https://img.shields.io/npm/v/l402-requests.svg)](https://www.npmjs.com/package/l402-requests)
+[![npm downloads](https://img.shields.io/npm/dm/l402-requests.svg)](https://www.npmjs.com/package/l402-requests)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 **Three lines of TypeScript. Paid APIs just work.**
 
 ```typescript
