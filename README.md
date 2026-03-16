@@ -200,3 +200,9 @@ The library automatically handles the L402 payment protocol — you just get the
 ## Source Code
 
 [GitHub Repository](https://github.com/refined-element/l402-ts) (MIT License)
+
+## Part of the Lightning Enable Ecosystem
+
+l402-requests is the consumer-side complement to the [Lightning Enable MCP Server](https://github.com/refined-element/lightning-enable-mcp). While the MCP server gives AI agents wallet tools, l402-requests lets your TypeScript code access paid APIs without any agent framework.
+
+Part of [Lightning Enable](https://lightningenable.com) — infrastructure for agent commerce over Lightning. See the [full ecosystem](https://docs.lightningenable.com/getting-started/ecosystem).
