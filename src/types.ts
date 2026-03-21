@@ -24,9 +24,10 @@ export interface CacheOptions {
   defaultTtlMs?: number;
 }
 
-/** A cached L402 credential (macaroon + preimage). */
+/** A cached L402 credential (macaroon + preimage).
+ * When macaroon is null, the credential was obtained via MPP (Payment scheme). */
 export interface L402Credential {
-  macaroon: string;
+  macaroon: string | null;
   preimage: string;
   createdAt: number;
   expiresAt: number | null;
@@ -46,6 +47,14 @@ export interface PaymentRecord {
 export interface L402Challenge {
   macaroon: string;
   invoice: string;
+}
+
+/** MPP challenge parsed from a Payment WWW-Authenticate header.
+ * Per IETF draft-ryan-httpauth-payment. */
+export interface MppChallenge {
+  invoice: string;
+  amount?: string;
+  realm?: string;
 }
 
 /** Options for the L402Client. */

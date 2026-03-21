@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { parseChallenge, findL402Challenge } from "../src/challenge.js";
+import {
+  parseChallenge,
+  findL402Challenge,
+  parseMppChallenge,
+  findPaymentChallenge,
+} from "../src/challenge.js";
 import { ChallengeParseError } from "../src/errors.js";
 
 describe("parseChallenge", () => {
@@ -69,5 +74,131 @@ describe("findL402Challenge", () => {
   it("returns null when no www-authenticate header", () => {
     const headers = { "content-type": "application/json" };
     expect(findL402Challenge(headers)).toBeNull();
+  });
+});
+
+describe("parseMppChallenge", () => {
+  it("parses valid Payment header with all fields", () => {
+    const header =
+      'Payment realm="api.example.com", method="lightning", invoice="lnbc100n1pjtest", amount="100", currency="sat"';
+    const result = parseMppChallenge(header);
+    expect(result.invoice).toBe("lnbc100n1pjtest");
+    expect(result.amount).toBe("100");
+    expect(result.realm).toBe("api.example.com");
+  });
+
+  it("parses minimal header (method + invoice only)", () => {
+    const result = parseMppChallenge(
+      'Payment method="lightning", invoice="lnbc100n1pjtest"',
+    );
+    expect(result.invoice).toBe("lnbc100n1pjtest");
+    expect(result.amount).toBeUndefined();
+    expect(result.realm).toBeUndefined();
+  });
+
+  it("is case-insensitive for scheme and method", () => {
+    const header =
+      'PAYMENT METHOD="LIGHTNING", invoice="lnbc100n1pjtest"';
+    const result = parseMppChallenge(header);
+    expect(result.invoice).toBe("lnbc100n1pjtest");
+  });
+
+  it("rejects non-lightning method", () => {
+    expect(() =>
+      parseMppChallenge(
+        'Payment method="stripe", invoice="lnbc100n1pjtest"',
+      ),
+    ).toThrow(ChallengeParseError);
+  });
+
+  it("rejects missing invoice", () => {
+    expect(() =>
+      parseMppChallenge('Payment method="lightning", amount="100"'),
+    ).toThrow(ChallengeParseError);
+  });
+
+  it("rejects empty header", () => {
+    expect(() => parseMppChallenge("")).toThrow(ChallengeParseError);
+  });
+
+  it("rejects null/undefined header", () => {
+    expect(() => parseMppChallenge(null as unknown as string)).toThrow(
+      ChallengeParseError,
+    );
+    expect(() => parseMppChallenge(undefined as unknown as string)).toThrow(
+      ChallengeParseError,
+    );
+  });
+
+  it("handles field ordering variations", () => {
+    const header =
+      'Payment invoice="lnbc200n1pjtest", method="lightning", realm="test.com", amount="200"';
+    const result = parseMppChallenge(header);
+    expect(result.invoice).toBe("lnbc200n1pjtest");
+    expect(result.amount).toBe("200");
+    expect(result.realm).toBe("test.com");
+  });
+});
+
+describe("findPaymentChallenge", () => {
+  it("prefers L402 when header contains L402 challenge", () => {
+    const headers = {
+      "www-authenticate":
+        'L402 macaroon="abc", invoice="lnbc100n1pjtest"',
+    };
+    const result = findPaymentChallenge(headers);
+    expect(result).not.toBeNull();
+    expect("macaroon" in result!).toBe(true);
+  });
+
+  it("falls back to MPP when L402 not present", () => {
+    const headers = {
+      "www-authenticate":
+        'Payment method="lightning", invoice="lnbc100n1pjtest"',
+    };
+    const result = findPaymentChallenge(headers);
+    expect(result).not.toBeNull();
+    expect("macaroon" in result!).toBe(false);
+    expect(result!.invoice).toBe("lnbc100n1pjtest");
+  });
+
+  it("returns null for unknown scheme", () => {
+    const headers = { "www-authenticate": "Bearer token123" };
+    expect(findPaymentChallenge(headers)).toBeNull();
+  });
+
+  it("returns null when no www-authenticate header", () => {
+    const headers = { "content-type": "application/json" };
+    expect(findPaymentChallenge(headers)).toBeNull();
+  });
+
+  it("works with Headers object for L402", () => {
+    const headers = new Headers({
+      "www-authenticate":
+        'L402 macaroon="mac123", invoice="lnbc1..."',
+    });
+    const result = findPaymentChallenge(headers);
+    expect(result).not.toBeNull();
+    expect("macaroon" in result!).toBe(true);
+  });
+
+  it("works with Headers object for MPP", () => {
+    const headers = new Headers({
+      "www-authenticate":
+        'Payment method="lightning", invoice="lnbc1..."',
+    });
+    const result = findPaymentChallenge(headers);
+    expect(result).not.toBeNull();
+    expect("macaroon" in result!).toBe(false);
+  });
+
+  it("handles case-insensitive header keys in plain objects", () => {
+    const headers = {
+      "WWW-Authenticate":
+        'Payment method="lightning", invoice="lnbc100n1pjtest"',
+    };
+    const result = findPaymentChallenge(headers);
+    expect(result).not.toBeNull();
+    expect(result!.invoice).toBe("lnbc100n1pjtest");
   });
 });

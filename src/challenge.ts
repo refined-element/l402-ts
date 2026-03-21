@@ -3,7 +3,7 @@
  */
 
 import { ChallengeParseError } from "./errors.js";
-import type { L402Challenge } from "./types.js";
+import type { L402Challenge, MppChallenge } from "./types.js";
 
 // Matches: L402 macaroon="...", invoice="..."
 // Also handles LSAT for backwards compatibility
@@ -77,3 +77,99 @@ export function findL402Challenge(
     return null;
   }
 }
+
+// ── MPP (Machine Payments Protocol) ──
+
+// Verify header starts with Payment scheme and contains method="lightning"
+const MPP_SCHEME_RE = /^Payment\s+/i;
+const MPP_METHOD_RE = /method="lightning"/i;
+// Extract individual fields (order-independent)
+const MPP_INVOICE_RE = /invoice="(?<invoice>[^"]+)"/i;
+const MPP_AMOUNT_RE = /amount="(?<amount>[^"]+)"/i;
+const MPP_REALM_RE = /realm="(?<realm>[^"]+)"/i;
+
+/**
+ * Parse a WWW-Authenticate header containing an MPP Payment challenge.
+ *
+ * Supports format:
+ *   Payment realm="...", method="lightning", invoice="<bolt11>", amount="...", currency="sat"
+ *
+ * @throws {ChallengeParseError} If the header cannot be parsed.
+ */
+export function parseMppChallenge(header: string): MppChallenge {
+  if (!header?.trim()) {
+    throw new ChallengeParseError(header ?? "", "empty header");
+  }
+
+  if (!MPP_SCHEME_RE.test(header) || !MPP_METHOD_RE.test(header)) {
+    throw new ChallengeParseError(
+      header,
+      'no Payment method="lightning" challenge found',
+    );
+  }
+
+  const invoiceMatch = MPP_INVOICE_RE.exec(header);
+  if (!invoiceMatch?.groups?.invoice) {
+    throw new ChallengeParseError(
+      header,
+      'no Payment method="lightning" challenge found',
+    );
+  }
+
+  const amountMatch = MPP_AMOUNT_RE.exec(header);
+  const realmMatch = MPP_REALM_RE.exec(header);
+
+  return {
+    invoice: invoiceMatch.groups.invoice,
+    amount: amountMatch?.groups?.amount,
+    realm: realmMatch?.groups?.realm,
+  };
+}
+
+/** Extract the www-authenticate header value from various header formats. */
+function extractWwwAuthenticate(
+  headers: Headers | Record<string, string>,
+): string | null {
+  if (headers instanceof Headers) {
+    return headers.get("www-authenticate");
+  }
+
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === "www-authenticate") {
+      return value;
+    }
+  }
+  return null;
+}
+
+/**
+ * Search response headers for an L402 or MPP payment challenge.
+ * Prefers L402 when both present. Falls back to MPP.
+ *
+ * @returns Parsed L402 or MPP challenge, or null if no payment challenge found.
+ */
+export function findPaymentChallenge(
+  headers: Headers | Record<string, string>,
+): L402Challenge | MppChallenge | null {
+  const raw = extractWwwAuthenticate(headers);
+  if (!raw) return null;
+
+  // Try L402 first (preferred)
+  try {
+    return parseChallenge(raw);
+  } catch {
+    // Not L402, try MPP
+  }
+
+  // Try MPP fallback
+  try {
+    return parseMppChallenge(raw);
+  } catch {
+    // Not MPP either
+  }
+
+  return null;
+}
+
+/** @deprecated Use findPaymentChallenge instead. */
+export const findL402OrMppChallenge = findPaymentChallenge;

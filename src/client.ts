@@ -6,11 +6,11 @@
 
 import { extractAmountSats } from "./bolt11.js";
 import { BudgetController } from "./budget.js";
-import { findL402Challenge } from "./challenge.js";
+import { findPaymentChallenge } from "./challenge.js";
 import { CredentialCache } from "./credential-cache.js";
 import { L402Error, PaymentFailedError } from "./errors.js";
 import { SpendingLog } from "./spending-log.js";
-import type { Wallet, L402Options } from "./types.js";
+import type { Wallet, L402Options, L402Challenge } from "./types.js";
 import { autoDetectWallet } from "./wallets/index.js";
 
 /** Body type compatible with fetch's RequestInit.body. */
@@ -83,11 +83,13 @@ export class L402Client {
       return response;
     }
 
-    // Parse L402 challenge
-    const challenge = findL402Challenge(response.headers);
+    // Parse L402 or MPP challenge
+    const challenge = findPaymentChallenge(response.headers);
     if (challenge === null) {
-      return response; // 402 but not L402 — return as-is
+      return response; // 402 but no recognized payment challenge — return as-is
     }
+
+    const isMpp = !("macaroon" in challenge);
 
     // Extract amount and check budget
     const amountSats = extractAmountSats(challenge.invoice);
@@ -127,19 +129,23 @@ export class L402Client {
     }
 
     // Cache the credential
-    this._cache.put(
-      domain,
-      parsed.pathname,
-      challenge.macaroon,
-      preimage,
-    );
+    if (isMpp) {
+      this._cache.put(domain, parsed.pathname, null, preimage);
+    } else {
+      this._cache.put(
+        domain,
+        parsed.pathname,
+        (challenge as L402Challenge).macaroon,
+        preimage,
+      );
+    }
 
-    // Retry with L402 authorization
+    // Retry with appropriate authorization header
     const retryHeaders = new Headers(mergedInit.headers);
-    retryHeaders.set(
-      "Authorization",
-      `L402 ${challenge.macaroon}:${preimage}`,
-    );
+    const authHeader = isMpp
+      ? `Payment method="lightning", preimage="${preimage}"`
+      : `L402 ${(challenge as L402Challenge).macaroon}:${preimage}`;
+    retryHeaders.set("Authorization", authHeader);
 
     const retryResponse = await globalThis.fetch(urlStr, {
       ...mergedInit,

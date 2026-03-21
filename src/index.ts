@@ -38,7 +38,12 @@ export { CredentialCache } from "./credential-cache.js";
 export { SpendingLog } from "./spending-log.js";
 
 // Challenge parsing
-export { parseChallenge, findL402Challenge } from "./challenge.js";
+export {
+  parseChallenge,
+  findL402Challenge,
+  parseMppChallenge,
+  findPaymentChallenge,
+} from "./challenge.js";
 
 // BOLT11 parsing
 export { extractAmountSats } from "./bolt11.js";
@@ -71,6 +76,7 @@ export type {
   CacheOptions,
   L402Credential,
   L402Challenge,
+  MppChallenge,
   PaymentRecord,
 } from "./types.js";
 

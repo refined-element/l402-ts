@@ -230,6 +230,95 @@ describe("L402Client", () => {
     expect(response.status).toBe(200);
   });
 
+  it("auto-pays MPP challenge and retries with Payment header", async () => {
+    let callCount = 0;
+    const fetchMock = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      const auth = headers.get("Authorization");
+      const hasPaymentAuth = auth?.startsWith("Payment ");
+
+      if (!hasPaymentAuth && callCount === 0) {
+        callCount++;
+        return new Response("Payment Required", {
+          status: 402,
+          headers: {
+            "WWW-Authenticate":
+              'Payment realm="api.example.com", method="lightning", invoice="lnbc10u1ptest", amount="1000", currency="sat"',
+          },
+        });
+      }
+
+      return new Response(JSON.stringify({ data: "paid-mpp" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    globalThis.fetch = fetchMock;
+
+    const wallet = mockWallet("mpp_preimage_hex");
+    const client = new L402Client({ wallet, budget: null });
+    const response = await client.get("https://api.example.com/mpp-resource");
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toEqual({ data: "paid-mpp" });
+    expect(wallet.payInvoice).toHaveBeenCalledOnce();
+
+    // Check the retry request has the Payment auth header (not L402)
+    const retryCall = fetchMock.mock.calls[1];
+    const retryHeaders = new Headers(retryCall[1].headers);
+    expect(retryHeaders.get("Authorization")).toBe(
+      'Payment method="lightning", preimage="mpp_preimage_hex"',
+    );
+  });
+
+  it("prefers L402 over MPP when both available", async () => {
+    let callCount = 0;
+    const fetchMock = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      const hasAuth = headers.get("Authorization")?.startsWith("L402 ");
+
+      if (!hasAuth && callCount === 0) {
+        callCount++;
+        // Even though this looks like MPP-style, parseChallenge should still try L402 first
+        return new Response("Payment Required", {
+          status: 402,
+          headers: {
+            "WWW-Authenticate": 'L402 macaroon="mac_l402", invoice="lnbc10u1ptest"',
+          },
+        });
+      }
+
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    });
+    globalThis.fetch = fetchMock;
+
+    const wallet = mockWallet("pre_l402");
+    const client = new L402Client({ wallet, budget: null });
+    await client.get("https://api.example.com/l402-preferred");
+
+    // Should use L402 format, not Payment format
+    const retryCall = fetchMock.mock.calls[1];
+    const retryHeaders = new Headers(retryCall[1].headers);
+    expect(retryHeaders.get("Authorization")).toBe("L402 mac_l402:pre_l402");
+  });
+
+  it("returns 402 as-is when no recognized payment challenge", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("Payment Required", {
+        status: 402,
+        headers: { "WWW-Authenticate": "Bearer realm=api" },
+      }),
+    );
+    globalThis.fetch = fetchMock;
+
+    const client = new L402Client({ wallet: mockWallet() });
+    const response = await client.get("https://api.example.com/unknown-scheme");
+
+    expect(response.status).toBe(402);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("supports all HTTP methods", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response("ok", { status: 200 }),

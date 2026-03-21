@@ -54,7 +54,7 @@ export class CredentialCache {
   put(
     domain: string,
     path: string,
-    macaroon: string,
+    macaroon: string | null,
     preimage: string,
     expiresAt?: number | null,
   ): L402Credential {
@@ -87,8 +87,12 @@ export class CredentialCache {
     return cred;
   }
 
-  /** Build the Authorization header value for a credential. */
+  /** Build the Authorization header value for a credential.
+   * Returns MPP Payment format when macaroon is null. */
   static authorizationHeader(cred: L402Credential): string {
+    if (cred.macaroon === null) {
+      return `Payment method="lightning", preimage="${cred.preimage}"`;
+    }
     return `L402 ${cred.macaroon}:${cred.preimage}`;
   }
 

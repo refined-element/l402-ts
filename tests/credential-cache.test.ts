@@ -89,4 +89,37 @@ describe("CredentialCache", () => {
     cache.clear();
     expect(cache.size).toBe(0);
   });
+
+  it("stores and retrieves MPP credentials (null macaroon)", () => {
+    const cache = new CredentialCache();
+    cache.put("example.com", "/api/v1/data", null, "pre456");
+    const cred = cache.get("example.com", "/api/v1/data");
+    expect(cred).not.toBeNull();
+    expect(cred!.macaroon).toBeNull();
+    expect(cred!.preimage).toBe("pre456");
+  });
+
+  it("builds MPP authorization header for null macaroon", () => {
+    const cred = {
+      macaroon: null,
+      preimage: "pre456",
+      createdAt: Date.now(),
+      expiresAt: null,
+    };
+    expect(CredentialCache.authorizationHeader(cred)).toBe(
+      'Payment method="lightning", preimage="pre456"',
+    );
+  });
+
+  it("builds L402 authorization header for non-null macaroon", () => {
+    const cred = {
+      macaroon: "mac123",
+      preimage: "pre456",
+      createdAt: Date.now(),
+      expiresAt: null,
+    };
+    expect(CredentialCache.authorizationHeader(cred)).toBe(
+      "L402 mac123:pre456",
+    );
+  });
 });
