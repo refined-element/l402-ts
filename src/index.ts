@@ -74,6 +74,7 @@ export type {
   L402Options,
   BudgetOptions,
   CacheOptions,
+  PaymentCredential,
   L402Credential,
   L402CredentialL402,
   L402CredentialMpp,

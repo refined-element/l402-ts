@@ -48,6 +48,23 @@ export function parseChallenge(header: string): L402Challenge {
   return { macaroon, invoice };
 }
 
+/** Extract the www-authenticate header value from various header formats.
+ * Shared by findL402Challenge and findPaymentChallenge for consistent lookup. */
+function extractWwwAuthenticate(
+  headers: Headers | Record<string, string>,
+): string | null {
+  if (headers instanceof Headers) {
+    return headers.get("www-authenticate");
+  }
+
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === "www-authenticate") {
+      return value;
+    }
+  }
+  return null;
+}
+
 /**
  * Search response headers for an L402 challenge.
  *
@@ -56,19 +73,7 @@ export function parseChallenge(header: string): L402Challenge {
 export function findL402Challenge(
   headers: Headers | Record<string, string>,
 ): L402Challenge | null {
-  let wwwAuth: string | null | undefined;
-
-  if (headers instanceof Headers) {
-    wwwAuth = headers.get("www-authenticate");
-  } else {
-    // Normalize header names to lowercase for case-insensitive lookup
-    const lower: Record<string, string> = {};
-    for (const [k, v] of Object.entries(headers)) {
-      lower[k.toLowerCase()] = v;
-    }
-    wwwAuth = lower["www-authenticate"];
-  }
-
+  const wwwAuth = extractWwwAuthenticate(headers);
   if (!wwwAuth) return null;
 
   try {
@@ -83,7 +88,7 @@ export function findL402Challenge(
 // Verify header contains a Payment scheme and a lightning method
 // Uses \b word boundary to handle comma-concatenated challenges (e.g., "Bearer ..., Payment ...")
 const MPP_SCHEME_RE = /\bPayment\s+/i;
-const MPP_METHOD_RE = /method="?lightning"?/i;
+const MPP_METHOD_RE = /method="?lightning"?(?=,|\s|$)/i;
 // Extract individual fields (order-independent), allowing quoted or unquoted values
 const MPP_INVOICE_RE = /invoice="?(?<invoice>[^",\s]+)"?/i;
 const MPP_AMOUNT_RE = /amount="?(?<amount>[^",\s]+)"?/i;
@@ -125,22 +130,6 @@ export function parseMppChallenge(header: string): MppChallenge {
     amount: amountMatch?.groups?.amount,
     realm: realmMatch?.groups?.realm,
   };
-}
-
-/** Extract the www-authenticate header value from various header formats. */
-function extractWwwAuthenticate(
-  headers: Headers | Record<string, string>,
-): string | null {
-  if (headers instanceof Headers) {
-    return headers.get("www-authenticate");
-  }
-
-  for (const [key, value] of Object.entries(headers)) {
-    if (key.toLowerCase() === "www-authenticate") {
-      return value;
-    }
-  }
-  return null;
 }
 
 /**

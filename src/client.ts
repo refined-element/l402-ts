@@ -10,7 +10,7 @@ import { findPaymentChallenge } from "./challenge.js";
 import { CredentialCache } from "./credential-cache.js";
 import { L402Error, PaymentFailedError } from "./errors.js";
 import { SpendingLog } from "./spending-log.js";
-import type { Wallet, L402Options, L402Challenge } from "./types.js";
+import type { Wallet, L402Options } from "./types.js";
 import { autoDetectWallet } from "./wallets/index.js";
 
 /** Body type compatible with fetch's RequestInit.body. */
@@ -89,8 +89,6 @@ export class L402Client {
       return response; // 402 but no recognized payment challenge — return as-is
     }
 
-    const isMpp = !("macaroon" in challenge);
-
     // Extract amount and check budget
     const amountSats = extractAmountSats(challenge.invoice);
 
@@ -129,7 +127,8 @@ export class L402Client {
     }
 
     // Cache the credential and reuse CredentialCache.authorizationHeader() for retry
-    const macaroonValue = isMpp ? null : (challenge as L402Challenge).macaroon;
+    // Use "macaroon" in challenge for natural type narrowing instead of casting
+    const macaroonValue = "macaroon" in challenge ? challenge.macaroon : null;
     const credential = this._cache.put(domain, parsed.pathname, macaroonValue, preimage);
 
     // Retry with appropriate authorization header (delegated to CredentialCache)

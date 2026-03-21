@@ -43,7 +43,10 @@ export interface L402CredentialMpp {
 }
 
 /** A cached payment credential — discriminated union of L402 and MPP. */
-export type L402Credential = L402CredentialL402 | L402CredentialMpp;
+export type PaymentCredential = L402CredentialL402 | L402CredentialMpp;
+
+/** Backwards-compatible alias for legacy L402-only credentials. */
+export type L402Credential = L402CredentialL402;
 
 /** A single L402 payment event. */
 export interface PaymentRecord {

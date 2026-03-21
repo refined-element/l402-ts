@@ -5,7 +5,7 @@
  * No locks needed (single-threaded).
  */
 
-import type { L402Credential, CacheOptions } from "./types.js";
+import type { PaymentCredential, CacheOptions } from "./types.js";
 
 /**
  * Normalize domain and path into a cache key string.
@@ -25,7 +25,7 @@ function cacheKey(domain: string, path: string): string {
 export class CredentialCache {
   private _maxSize: number;
   private _defaultTtlMs: number | null;
-  private _cache = new Map<string, L402Credential>();
+  private _cache = new Map<string, PaymentCredential>();
 
   constructor(options: CacheOptions = {}) {
     this._maxSize = options.maxSize ?? 256;
@@ -33,7 +33,7 @@ export class CredentialCache {
   }
 
   /** Retrieve a cached credential for the given domain and path. */
-  get(domain: string, path: string): L402Credential | null {
+  get(domain: string, path: string): PaymentCredential | null {
     const key = cacheKey(domain, path);
     const cred = this._cache.get(key);
     if (!cred) return null;
@@ -57,7 +57,7 @@ export class CredentialCache {
     macaroon: string | null,
     preimage: string,
     expiresAt?: number | null,
-  ): L402Credential {
+  ): PaymentCredential {
     const key = cacheKey(domain, path);
 
     const resolvedExpiresAt =
@@ -67,7 +67,7 @@ export class CredentialCache {
           ? Date.now() + this._defaultTtlMs
           : null;
 
-    const cred: L402Credential = macaroon === null
+    const cred: PaymentCredential = macaroon === null
       ? {
           scheme: "payment" as const,
           macaroon: null,
@@ -98,7 +98,7 @@ export class CredentialCache {
 
   /** Build the Authorization header value for a credential.
    * Returns MPP Payment format for "payment" scheme, L402 format for "l402" scheme. */
-  static authorizationHeader(cred: L402Credential): string {
+  static authorizationHeader(cred: PaymentCredential): string {
     if (cred.scheme === "payment") {
       return `Payment method="lightning", preimage="${cred.preimage}"`;
     }

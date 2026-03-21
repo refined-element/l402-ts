@@ -111,6 +111,19 @@ describe("parseMppChallenge", () => {
     ).toThrow(ChallengeParseError);
   });
 
+  it("rejects method values that start with lightning but have a suffix", () => {
+    expect(() =>
+      parseMppChallenge(
+        'Payment method="lightning-fast", invoice="lnbc100n1pjtest"',
+      ),
+    ).toThrow(ChallengeParseError);
+    expect(() =>
+      parseMppChallenge(
+        "Payment method=lightning123, invoice=lnbc100n1pjtest",
+      ),
+    ).toThrow(ChallengeParseError);
+  });
+
   it("rejects missing invoice", () => {
     expect(() =>
       parseMppChallenge('Payment method="lightning", amount="100"'),
