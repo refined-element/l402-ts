@@ -71,6 +71,7 @@ describe("CredentialCache", () => {
 
   it("builds authorization header", () => {
     const cred = {
+      scheme: "l402" as const,
       macaroon: "mac123",
       preimage: "pre456",
       createdAt: Date.now(),
@@ -99,8 +100,9 @@ describe("CredentialCache", () => {
     expect(cred!.preimage).toBe("pre456");
   });
 
-  it("builds MPP authorization header for null macaroon", () => {
+  it("builds MPP authorization header for payment scheme credential", () => {
     const cred = {
+      scheme: "payment" as const,
       macaroon: null,
       preimage: "pre456",
       createdAt: Date.now(),
@@ -111,8 +113,9 @@ describe("CredentialCache", () => {
     );
   });
 
-  it("builds L402 authorization header for non-null macaroon", () => {
+  it("builds L402 authorization header for l402 scheme credential", () => {
     const cred = {
+      scheme: "l402" as const,
       macaroon: "mac123",
       preimage: "pre456",
       createdAt: Date.now(),

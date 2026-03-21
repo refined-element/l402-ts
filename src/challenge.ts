@@ -80,13 +80,14 @@ export function findL402Challenge(
 
 // ── MPP (Machine Payments Protocol) ──
 
-// Verify header starts with Payment scheme and contains method="lightning"
-const MPP_SCHEME_RE = /^Payment\s+/i;
-const MPP_METHOD_RE = /method="lightning"/i;
-// Extract individual fields (order-independent)
-const MPP_INVOICE_RE = /invoice="(?<invoice>[^"]+)"/i;
-const MPP_AMOUNT_RE = /amount="(?<amount>[^"]+)"/i;
-const MPP_REALM_RE = /realm="(?<realm>[^"]+)"/i;
+// Verify header contains a Payment scheme and a lightning method
+// Uses \b word boundary to handle comma-concatenated challenges (e.g., "Bearer ..., Payment ...")
+const MPP_SCHEME_RE = /\bPayment\s+/i;
+const MPP_METHOD_RE = /method="?lightning"?/i;
+// Extract individual fields (order-independent), allowing quoted or unquoted values
+const MPP_INVOICE_RE = /invoice="?(?<invoice>[^",\s]+)"?/i;
+const MPP_AMOUNT_RE = /amount="?(?<amount>[^",\s]+)"?/i;
+const MPP_REALM_RE = /realm="?(?<realm>[^",\s]+)"?/i;
 
 /**
  * Parse a WWW-Authenticate header containing an MPP Payment challenge.

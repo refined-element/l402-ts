@@ -138,6 +138,21 @@ describe("parseMppChallenge", () => {
     expect(result.amount).toBe("200");
     expect(result.realm).toBe("test.com");
   });
+
+  it("parses unquoted param values", () => {
+    const header =
+      "Payment method=lightning, invoice=lnbc300n1pjtest, amount=300";
+    const result = parseMppChallenge(header);
+    expect(result.invoice).toBe("lnbc300n1pjtest");
+    expect(result.amount).toBe("300");
+  });
+
+  it("parses Payment challenge from comma-concatenated header", () => {
+    const header =
+      'Bearer realm="api", Payment method="lightning", invoice="lnbc400n1pjtest"';
+    const result = parseMppChallenge(header);
+    expect(result.invoice).toBe("lnbc400n1pjtest");
+  });
 });
 
 describe("findPaymentChallenge", () => {

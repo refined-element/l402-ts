@@ -24,14 +24,26 @@ export interface CacheOptions {
   defaultTtlMs?: number;
 }
 
-/** A cached L402 credential (macaroon + preimage).
- * When macaroon is null, the credential was obtained via MPP (Payment scheme). */
-export interface L402Credential {
-  macaroon: string | null;
+/** A cached credential obtained via L402 (macaroon + preimage). */
+export interface L402CredentialL402 {
+  scheme: "l402";
+  macaroon: string;
   preimage: string;
   createdAt: number;
   expiresAt: number | null;
 }
+
+/** A cached credential obtained via MPP Payment scheme (preimage only). */
+export interface L402CredentialMpp {
+  scheme: "payment";
+  macaroon: null;
+  preimage: string;
+  createdAt: number;
+  expiresAt: number | null;
+}
+
+/** A cached payment credential — discriminated union of L402 and MPP. */
+export type L402Credential = L402CredentialL402 | L402CredentialMpp;
 
 /** A single L402 payment event. */
 export interface PaymentRecord {

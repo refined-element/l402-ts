@@ -128,24 +128,13 @@ export class L402Client {
       );
     }
 
-    // Cache the credential
-    if (isMpp) {
-      this._cache.put(domain, parsed.pathname, null, preimage);
-    } else {
-      this._cache.put(
-        domain,
-        parsed.pathname,
-        (challenge as L402Challenge).macaroon,
-        preimage,
-      );
-    }
+    // Cache the credential and reuse CredentialCache.authorizationHeader() for retry
+    const macaroonValue = isMpp ? null : (challenge as L402Challenge).macaroon;
+    const credential = this._cache.put(domain, parsed.pathname, macaroonValue, preimage);
 
-    // Retry with appropriate authorization header
+    // Retry with appropriate authorization header (delegated to CredentialCache)
     const retryHeaders = new Headers(mergedInit.headers);
-    const authHeader = isMpp
-      ? `Payment method="lightning", preimage="${preimage}"`
-      : `L402 ${(challenge as L402Challenge).macaroon}:${preimage}`;
-    retryHeaders.set("Authorization", authHeader);
+    retryHeaders.set("Authorization", CredentialCache.authorizationHeader(credential));
 
     const retryResponse = await globalThis.fetch(urlStr, {
       ...mergedInit,

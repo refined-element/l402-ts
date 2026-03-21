@@ -67,12 +67,21 @@ export class CredentialCache {
           ? Date.now() + this._defaultTtlMs
           : null;
 
-    const cred: L402Credential = {
-      macaroon,
-      preimage,
-      createdAt: Date.now(),
-      expiresAt: resolvedExpiresAt ?? null,
-    };
+    const cred: L402Credential = macaroon === null
+      ? {
+          scheme: "payment" as const,
+          macaroon: null,
+          preimage,
+          createdAt: Date.now(),
+          expiresAt: resolvedExpiresAt ?? null,
+        }
+      : {
+          scheme: "l402" as const,
+          macaroon,
+          preimage,
+          createdAt: Date.now(),
+          expiresAt: resolvedExpiresAt ?? null,
+        };
 
     // Delete first if exists (for move-to-end)
     this._cache.delete(key);
@@ -88,9 +97,9 @@ export class CredentialCache {
   }
 
   /** Build the Authorization header value for a credential.
-   * Returns MPP Payment format when macaroon is null. */
+   * Returns MPP Payment format for "payment" scheme, L402 format for "l402" scheme. */
   static authorizationHeader(cred: L402Credential): string {
-    if (cred.macaroon === null) {
+    if (cred.scheme === "payment") {
       return `Payment method="lightning", preimage="${cred.preimage}"`;
     }
     return `L402 ${cred.macaroon}:${cred.preimage}`;
