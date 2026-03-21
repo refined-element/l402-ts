@@ -6,7 +6,7 @@
 
 import { extractAmountSats } from "./bolt11.js";
 import { BudgetController } from "./budget.js";
-import { findL402Challenge } from "./challenge.js";
+import { findPaymentChallenge } from "./challenge.js";
 import { CredentialCache } from "./credential-cache.js";
 import { L402Error, PaymentFailedError } from "./errors.js";
 import { SpendingLog } from "./spending-log.js";
@@ -83,10 +83,10 @@ export class L402Client {
       return response;
     }
 
-    // Parse L402 challenge
-    const challenge = findL402Challenge(response.headers);
+    // Parse L402 or MPP challenge
+    const challenge = findPaymentChallenge(response.headers);
     if (challenge === null) {
-      return response; // 402 but not L402 — return as-is
+      return response; // 402 but no recognized payment challenge — return as-is
     }
 
     // Extract amount and check budget
@@ -126,20 +126,14 @@ export class L402Client {
       );
     }
 
-    // Cache the credential
-    this._cache.put(
-      domain,
-      parsed.pathname,
-      challenge.macaroon,
-      preimage,
-    );
+    // Cache the credential and reuse CredentialCache.authorizationHeader() for retry
+    // Use "macaroon" in challenge for natural type narrowing instead of casting
+    const macaroonValue = "macaroon" in challenge ? challenge.macaroon : null;
+    const credential = this._cache.put(domain, parsed.pathname, macaroonValue, preimage);
 
-    // Retry with L402 authorization
+    // Retry with appropriate authorization header (delegated to CredentialCache)
     const retryHeaders = new Headers(mergedInit.headers);
-    retryHeaders.set(
-      "Authorization",
-      `L402 ${challenge.macaroon}:${preimage}`,
-    );
+    retryHeaders.set("Authorization", CredentialCache.authorizationHeader(credential));
 
     const retryResponse = await globalThis.fetch(urlStr, {
       ...mergedInit,

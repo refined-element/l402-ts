@@ -24,13 +24,35 @@ export interface CacheOptions {
   defaultTtlMs?: number;
 }
 
-/** A cached L402 credential (macaroon + preimage). */
-export interface L402Credential {
+/** A cached credential obtained via L402 (macaroon + preimage). */
+export interface L402CredentialL402 {
+  scheme: "l402";
   macaroon: string;
   preimage: string;
   createdAt: number;
   expiresAt: number | null;
 }
+
+/** A cached credential obtained via MPP Payment scheme (preimage only). */
+export interface L402CredentialMpp {
+  scheme: "payment";
+  macaroon: null;
+  preimage: string;
+  createdAt: number;
+  expiresAt: number | null;
+}
+
+/** A cached payment credential — discriminated union of L402 and MPP. */
+export type PaymentCredential = L402CredentialL402 | L402CredentialMpp;
+
+/**
+ * Alias for L402-based payment credentials (includes `scheme: "l402"`).
+ *
+ * NOTE: This type requires a `scheme: "l402"` discriminant field.
+ * Code that previously constructed `{ macaroon, preimage, createdAt, expiresAt }`
+ * without a `scheme` field must add `scheme: "l402"` to remain compatible.
+ */
+export type L402Credential = L402CredentialL402;
 
 /** A single L402 payment event. */
 export interface PaymentRecord {
@@ -46,6 +68,14 @@ export interface PaymentRecord {
 export interface L402Challenge {
   macaroon: string;
   invoice: string;
+}
+
+/** MPP challenge parsed from a Payment WWW-Authenticate header.
+ * Per IETF draft-ryan-httpauth-payment. */
+export interface MppChallenge {
+  invoice: string;
+  amount?: string;
+  realm?: string;
 }
 
 /** Options for the L402Client. */

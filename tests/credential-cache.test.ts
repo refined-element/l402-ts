@@ -71,13 +71,14 @@ describe("CredentialCache", () => {
 
   it("builds authorization header", () => {
     const cred = {
+      scheme: "l402" as const,
       macaroon: "mac123",
-      preimage: "pre456",
+      preimage: "abcdef0123456789",
       createdAt: Date.now(),
       expiresAt: null,
     };
     expect(CredentialCache.authorizationHeader(cred)).toBe(
-      "L402 mac123:pre456",
+      "L402 mac123:abcdef0123456789",
     );
   });
 
@@ -88,5 +89,66 @@ describe("CredentialCache", () => {
     expect(cache.size).toBe(1);
     cache.clear();
     expect(cache.size).toBe(0);
+  });
+
+  it("stores and retrieves MPP credentials (null macaroon)", () => {
+    const cache = new CredentialCache();
+    cache.put("example.com", "/api/v1/data", null, "pre456");
+    const cred = cache.get("example.com", "/api/v1/data");
+    expect(cred).not.toBeNull();
+    expect(cred!.macaroon).toBeNull();
+    expect(cred!.preimage).toBe("pre456");
+  });
+
+  it("builds MPP authorization header for payment scheme credential", () => {
+    const cred = {
+      scheme: "payment" as const,
+      macaroon: null,
+      preimage: "abcdef0123456789",
+      createdAt: Date.now(),
+      expiresAt: null,
+    };
+    expect(CredentialCache.authorizationHeader(cred)).toBe(
+      'Payment method="lightning", preimage="abcdef0123456789"',
+    );
+  });
+
+  it("builds L402 authorization header for l402 scheme credential", () => {
+    const cred = {
+      scheme: "l402" as const,
+      macaroon: "mac123",
+      preimage: "abcdef0123456789",
+      createdAt: Date.now(),
+      expiresAt: null,
+    };
+    expect(CredentialCache.authorizationHeader(cred)).toBe(
+      "L402 mac123:abcdef0123456789",
+    );
+  });
+
+  it("rejects non-hex preimage in authorizationHeader to prevent header injection", () => {
+    const cred = {
+      scheme: "payment" as const,
+      macaroon: null,
+      preimage: 'evil"injected',
+      createdAt: Date.now(),
+      expiresAt: null,
+    };
+    expect(() => CredentialCache.authorizationHeader(cred)).toThrow(
+      "Invalid preimage: expected hex string",
+    );
+  });
+
+  it("rejects preimage with spaces in authorizationHeader", () => {
+    const cred = {
+      scheme: "l402" as const,
+      macaroon: "mac123",
+      preimage: "abc def",
+      createdAt: Date.now(),
+      expiresAt: null,
+    };
+    expect(() => CredentialCache.authorizationHeader(cred)).toThrow(
+      "Invalid preimage: expected hex string",
+    );
   });
 });

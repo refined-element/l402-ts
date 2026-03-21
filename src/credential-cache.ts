@@ -5,7 +5,11 @@
  * No locks needed (single-threaded).
  */
 
-import type { L402Credential, CacheOptions } from "./types.js";
+import type { PaymentCredential, CacheOptions } from "./types.js";
+import { L402Error } from "./errors.js";
+
+/** Strict hex string pattern — only lowercase/uppercase hex digits. */
+const HEX_RE = /^[0-9a-fA-F]+$/;
 
 /**
  * Normalize domain and path into a cache key string.
@@ -25,7 +29,7 @@ function cacheKey(domain: string, path: string): string {
 export class CredentialCache {
   private _maxSize: number;
   private _defaultTtlMs: number | null;
-  private _cache = new Map<string, L402Credential>();
+  private _cache = new Map<string, PaymentCredential>();
 
   constructor(options: CacheOptions = {}) {
     this._maxSize = options.maxSize ?? 256;
@@ -33,7 +37,7 @@ export class CredentialCache {
   }
 
   /** Retrieve a cached credential for the given domain and path. */
-  get(domain: string, path: string): L402Credential | null {
+  get(domain: string, path: string): PaymentCredential | null {
     const key = cacheKey(domain, path);
     const cred = this._cache.get(key);
     if (!cred) return null;
@@ -54,10 +58,10 @@ export class CredentialCache {
   put(
     domain: string,
     path: string,
-    macaroon: string,
+    macaroon: string | null,
     preimage: string,
     expiresAt?: number | null,
-  ): L402Credential {
+  ): PaymentCredential {
     const key = cacheKey(domain, path);
 
     const resolvedExpiresAt =
@@ -67,12 +71,21 @@ export class CredentialCache {
           ? Date.now() + this._defaultTtlMs
           : null;
 
-    const cred: L402Credential = {
-      macaroon,
-      preimage,
-      createdAt: Date.now(),
-      expiresAt: resolvedExpiresAt ?? null,
-    };
+    const cred: PaymentCredential = macaroon === null
+      ? {
+          scheme: "payment" as const,
+          macaroon: null,
+          preimage,
+          createdAt: Date.now(),
+          expiresAt: resolvedExpiresAt ?? null,
+        }
+      : {
+          scheme: "l402" as const,
+          macaroon,
+          preimage,
+          createdAt: Date.now(),
+          expiresAt: resolvedExpiresAt ?? null,
+        };
 
     // Delete first if exists (for move-to-end)
     this._cache.delete(key);
@@ -87,8 +100,18 @@ export class CredentialCache {
     return cred;
   }
 
-  /** Build the Authorization header value for a credential. */
-  static authorizationHeader(cred: L402Credential): string {
+  /** Build the Authorization header value for a credential.
+   * Returns MPP Payment format for "payment" scheme, L402 format for "l402" scheme.
+   * Validates that the preimage is a hex string to prevent header injection. */
+  static authorizationHeader(cred: PaymentCredential): string {
+    if (!HEX_RE.test(cred.preimage)) {
+      throw new L402Error(
+        "Invalid preimage: expected hex string, got non-hex characters",
+      );
+    }
+    if (cred.scheme === "payment") {
+      return `Payment method="lightning", preimage="${cred.preimage}"`;
+    }
     return `L402 ${cred.macaroon}:${cred.preimage}`;
   }
 
