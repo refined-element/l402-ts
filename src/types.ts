@@ -45,7 +45,13 @@ export interface L402CredentialMpp {
 /** A cached payment credential — discriminated union of L402 and MPP. */
 export type PaymentCredential = L402CredentialL402 | L402CredentialMpp;
 
-/** Backwards-compatible alias for legacy L402-only credentials. */
+/**
+ * Alias for L402-based payment credentials (includes `scheme: "l402"`).
+ *
+ * NOTE: This type requires a `scheme: "l402"` discriminant field.
+ * Code that previously constructed `{ macaroon, preimage, createdAt, expiresAt }`
+ * without a `scheme` field must add `scheme: "l402"` to remain compatible.
+ */
 export type L402Credential = L402CredentialL402;
 
 /** A single L402 payment event. */

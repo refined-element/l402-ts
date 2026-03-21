@@ -6,6 +6,10 @@
  */
 
 import type { PaymentCredential, CacheOptions } from "./types.js";
+import { L402Error } from "./errors.js";
+
+/** Strict hex string pattern — only lowercase/uppercase hex digits. */
+const HEX_RE = /^[0-9a-fA-F]+$/;
 
 /**
  * Normalize domain and path into a cache key string.
@@ -97,8 +101,14 @@ export class CredentialCache {
   }
 
   /** Build the Authorization header value for a credential.
-   * Returns MPP Payment format for "payment" scheme, L402 format for "l402" scheme. */
+   * Returns MPP Payment format for "payment" scheme, L402 format for "l402" scheme.
+   * Validates that the preimage is a hex string to prevent header injection. */
   static authorizationHeader(cred: PaymentCredential): string {
+    if (!HEX_RE.test(cred.preimage)) {
+      throw new L402Error(
+        "Invalid preimage: expected hex string, got non-hex characters",
+      );
+    }
     if (cred.scheme === "payment") {
       return `Payment method="lightning", preimage="${cred.preimage}"`;
     }

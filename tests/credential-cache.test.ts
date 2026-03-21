@@ -73,12 +73,12 @@ describe("CredentialCache", () => {
     const cred = {
       scheme: "l402" as const,
       macaroon: "mac123",
-      preimage: "pre456",
+      preimage: "abcdef0123456789",
       createdAt: Date.now(),
       expiresAt: null,
     };
     expect(CredentialCache.authorizationHeader(cred)).toBe(
-      "L402 mac123:pre456",
+      "L402 mac123:abcdef0123456789",
     );
   });
 
@@ -104,12 +104,12 @@ describe("CredentialCache", () => {
     const cred = {
       scheme: "payment" as const,
       macaroon: null,
-      preimage: "pre456",
+      preimage: "abcdef0123456789",
       createdAt: Date.now(),
       expiresAt: null,
     };
     expect(CredentialCache.authorizationHeader(cred)).toBe(
-      'Payment method="lightning", preimage="pre456"',
+      'Payment method="lightning", preimage="abcdef0123456789"',
     );
   });
 
@@ -117,12 +117,38 @@ describe("CredentialCache", () => {
     const cred = {
       scheme: "l402" as const,
       macaroon: "mac123",
-      preimage: "pre456",
+      preimage: "abcdef0123456789",
       createdAt: Date.now(),
       expiresAt: null,
     };
     expect(CredentialCache.authorizationHeader(cred)).toBe(
-      "L402 mac123:pre456",
+      "L402 mac123:abcdef0123456789",
+    );
+  });
+
+  it("rejects non-hex preimage in authorizationHeader to prevent header injection", () => {
+    const cred = {
+      scheme: "payment" as const,
+      macaroon: null,
+      preimage: 'evil"injected',
+      createdAt: Date.now(),
+      expiresAt: null,
+    };
+    expect(() => CredentialCache.authorizationHeader(cred)).toThrow(
+      "Invalid preimage: expected hex string",
+    );
+  });
+
+  it("rejects preimage with spaces in authorizationHeader", () => {
+    const cred = {
+      scheme: "l402" as const,
+      macaroon: "mac123",
+      preimage: "abc def",
+      createdAt: Date.now(),
+      expiresAt: null,
+    };
+    expect(() => CredentialCache.authorizationHeader(cred)).toThrow(
+      "Invalid preimage: expected hex string",
     );
   });
 });
