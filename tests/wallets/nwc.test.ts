@@ -38,7 +38,7 @@ describe("NwcWallet — connection string parsing", () => {
         new NwcWallet(
           `nostr+walletconnect://abc123?relay=wss://relay.example.com&secret=${secret64}`,
         ),
-    ).toThrow(/64 lowercase hex chars/);
+    ).toThrow(/64 hex chars/);
   });
 
   it("throws for wallet pubkey containing non-hex characters", () => {
@@ -49,7 +49,7 @@ describe("NwcWallet — connection string parsing", () => {
         new NwcWallet(
           `nostr+walletconnect://${badPubkey}?relay=wss://relay.example.com&secret=${secret64}`,
         ),
-    ).toThrow(/64 lowercase hex chars/);
+    ).toThrow(/64 hex chars/);
   });
 
   it("throws for secret that isn't 64 hex chars", () => {
@@ -58,7 +58,7 @@ describe("NwcWallet — connection string parsing", () => {
         new NwcWallet(
           `nostr+walletconnect://${pubkey64}?relay=wss://relay.example.com&secret=deadbeef`,
         ),
-    ).toThrow(/64 lowercase hex chars/);
+    ).toThrow(/64 hex chars/);
   });
 
   it("lowercases the pubkey and secret so regex validation is deterministic", () => {

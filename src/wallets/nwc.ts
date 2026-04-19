@@ -55,7 +55,7 @@ export class NwcWallet implements Wallet {
     }
     if (!HEX_32_BYTES.test(this._walletPubkey)) {
       throw new Error(
-        "NWC wallet pubkey must be 64 lowercase hex chars (32-byte x-only Nostr pubkey)",
+        "NWC wallet pubkey must be 64 hex chars (uppercase is normalized to lowercase at ingest) (32-byte x-only Nostr pubkey)",
       );
     }
     if (!this._relay) {
@@ -66,7 +66,7 @@ export class NwcWallet implements Wallet {
     }
     if (!HEX_32_BYTES.test(this._secret)) {
       throw new Error(
-        "NWC secret must be 64 lowercase hex chars (32-byte Nostr private key)",
+        "NWC secret must be 64 hex chars (uppercase is normalized to lowercase at ingest) (32-byte Nostr private key)",
       );
     }
   }
