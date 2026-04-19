@@ -85,7 +85,7 @@ describe("NwcWallet — connection string parsing", () => {
 // so bundlers don't try to statically resolve an optional peer dep), and
 // dropped silently without raising useful signal.
 //
-// The five constructor-validation tests above are the real regression guard
+// The four constructor-validation tests above are the real regression guard
 // the review asked for: they trip before any caller can reach the crypto
 // boundary with malformed input, and together with the minimal local
 // `NobleSecp256k1` interface in nwc.ts they give the compiler enough to
