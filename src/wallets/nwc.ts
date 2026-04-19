@@ -72,10 +72,14 @@ export class NwcWallet implements Wallet {
       params: { invoice: bolt11 },
     });
 
-    // NIP-04 encryption (shared secret + AES-256-CBC)
+    // NIP-04 encryption (shared secret + AES-256-CBC).
+    // @noble/secp256k1 v2+ requires Uint8Array, not hex strings — passing
+    // `"02" + this._walletPubkey` directly here blew up with
+    // `expected Uint8Array, got type=string`, breaking NWC for Coinos/CLINK/Alby.
+    // Strike and LND paths are unaffected (different wallet implementations).
     const sharedPoint: Uint8Array = secp256k1.getSharedSecret(
       secretBytes,
-      "02" + this._walletPubkey,
+      hexToBytes("02" + this._walletPubkey),
     );
     const sharedX = sharedPoint.slice(1, 33);
 
