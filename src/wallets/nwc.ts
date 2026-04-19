@@ -12,7 +12,8 @@ import { PaymentFailedError } from "../errors.js";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // Nostr pubkeys and secrets are both 32-byte (256-bit) values serialized as
-// 64 lowercase hex characters (x-only, no 0x-prefix, no compressed-point byte).
+// 64 hex characters (x-only, no 0x-prefix, no compressed-point byte).
+// Uppercase input is normalized to lowercase at ingest before validation/storage.
 // See NIP-01. Validating at construction time beats the silent coercion
 // inside `hexToBytes()` (it would parseInt non-hex digits as NaN and bake
 // zeros into the Uint8Array, producing a wrong shared secret with a confusing
