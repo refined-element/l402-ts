@@ -25,7 +25,7 @@ const HEX_32_BYTES = /^[0-9a-f]{64}$/;
 // surface identical for consumers (it's an optional peer dep at runtime
 // only) while still giving TypeScript enough to catch regressions where a
 // hex string gets passed where a Uint8Array is required.
-interface NobleSecp256k1 {
+export interface NobleSecp256k1 {
   getPublicKey: (privateKey: Uint8Array, compressed?: boolean) => Uint8Array;
   getSharedSecret: (
     privateKey: Uint8Array,
@@ -33,7 +33,131 @@ interface NobleSecp256k1 {
   ) => Uint8Array;
   schnorr: {
     sign: (message: Uint8Array, privateKey: Uint8Array) => Uint8Array;
+    // BIP340 verify. @noble/secp256k1 v1 returns a Promise<boolean>; we always
+    // await it so a sync return is handled transparently too. We pass every
+    // argument as a Uint8Array (never a hex string) to dodge the same
+    // hex-vs-Uint8Array coercion pitfall that broke getSharedSecret (commit
+    // 2c1de9b) — see verifyNwcResponseEvent.
+    verify: (
+      signature: Uint8Array,
+      message: Uint8Array,
+      publicKey: Uint8Array,
+    ) => boolean | Promise<boolean>;
   };
+}
+
+/**
+ * Computes a Nostr (NIP-01) event id: the lowercase hex SHA-256 of the
+ * canonical serialization `[0, pubkey, created_at, kind, tags, content]`.
+ * Single source of truth shared by the signing path (request events) and the
+ * verification path (response events) so the two can never drift.
+ */
+async function computeNostrEventId(
+  pubkey: string,
+  createdAt: number,
+  kind: number,
+  tags: unknown,
+  content: string,
+): Promise<string> {
+  const serialized = JSON.stringify([0, pubkey, createdAt, kind, tags, content]);
+  const idBytes = new Uint8Array(
+    await globalThis.crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(serialized),
+    ),
+  );
+  return bytesToHex(idBytes);
+}
+
+const HEX_64 = /^[0-9a-f]{64}$/;
+const HEX_128 = /^[0-9a-f]{128}$/;
+
+/**
+ * Verifies that a kind-23195 NIP-47 response event genuinely came from the
+ * expected wallet before its (encrypted) content is decrypted and trusted.
+ *
+ * F-11 — mirrors the MCP server fix shipped in v1.12.8
+ * (NwcWalletService.IsResponseEventTrustworthy /
+ * nwc_wallet._verify_nostr_event_signature). A relay only proves it relayed an
+ * event; it never proves the event is authentic. Without this gate a malicious
+ * or compromised relay (or a MITM) can forge a `pay_invoice`/`get_balance`
+ * response that matches our subscription filter and feed us a bogus preimage or
+ * balance. The NIP-04 ECDH encryption already authenticates the sender
+ * implicitly, but verifying the BIP340 signature + claimed pubkey is
+ * defence-in-depth: it rejects forged/garbage events up front and stays correct
+ * against any future NIP-47 extension that decouples sender identity from the
+ * encryption key.
+ *
+ * Returns true only when ALL of the following hold:
+ *   1. `event.pubkey` equals `expectedWalletPubkey` (case-insensitive).
+ *   2. The recomputed NIP-01 id matches `event.id` (catches tampered
+ *      tags/content/etc).
+ *   3. The `sig` is a valid BIP340 Schnorr signature over the id bytes under
+ *      `event.pubkey`.
+ * Any malformed input (missing/short fields, non-hex) returns false — fail
+ * closed.
+ *
+ * Encoding care (see commit 2c1de9b): the event id is a 32-byte value and the
+ * BIP340 "message" is those raw id bytes, NOT a re-hash. We feed schnorr.verify
+ * Uint8Arrays for sig, message, and pubkey — converting from hex via
+ * `hexToBytes` — rather than hex strings, so noble can't silently mis-coerce a
+ * string argument.
+ */
+export async function verifyNwcResponseEvent(
+  event: Record<string, unknown>,
+  expectedWalletPubkey: string,
+  secp256k1: NobleSecp256k1,
+): Promise<boolean> {
+  try {
+    const idHex = typeof event["id"] === "string" ? (event["id"] as string).toLowerCase() : "";
+    const pubkeyHex =
+      typeof event["pubkey"] === "string" ? (event["pubkey"] as string).toLowerCase() : "";
+    const sigHex = typeof event["sig"] === "string" ? (event["sig"] as string).toLowerCase() : "";
+    const createdAt = event["created_at"];
+    const kind = event["kind"];
+    const tags = event["tags"];
+    const content = event["content"];
+
+    // 1. Claimed pubkey must be the wallet we're talking to.
+    if (pubkeyHex !== expectedWalletPubkey.toLowerCase()) return false;
+
+    // Structural validation before any crypto.
+    if (
+      !HEX_64.test(idHex) ||
+      !HEX_64.test(pubkeyHex) ||
+      !HEX_128.test(sigHex) ||
+      typeof createdAt !== "number" ||
+      typeof kind !== "number" ||
+      !Array.isArray(tags) ||
+      typeof content !== "string"
+    ) {
+      return false;
+    }
+
+    // 2. Recompute the id from the canonical serialization — any tampered
+    //    field (including the content the relay might rewrite to inject a bogus
+    //    preimage) produces a different id and fails here.
+    const recomputedId = await computeNostrEventId(
+      pubkeyHex,
+      createdAt,
+      kind,
+      tags,
+      content,
+    );
+    if (recomputedId !== idHex) return false;
+
+    // 3. BIP340 schnorr verify over the raw 32-byte id bytes. All-Uint8Array
+    //    arguments (no hex strings) to avoid the 2c1de9b coercion pitfall.
+    const verified = await secp256k1.schnorr.verify(
+      hexToBytes(sigHex),
+      hexToBytes(idHex),
+      hexToBytes(pubkeyHex),
+    );
+    return verified === true;
+  } catch {
+    // Fail closed: any parse/crypto exception → untrusted.
+    return false;
+  }
 }
 
 export class NwcWallet implements Wallet {
@@ -158,22 +282,16 @@ export class NwcWallet implements Wallet {
       pubkey: pubkeyHex,
     };
 
-    // Compute event ID (SHA-256 of serialized event)
-    const serialized = JSON.stringify([
-      0,
-      event["pubkey"],
-      event["created_at"],
-      event["kind"],
+    // Compute event ID (SHA-256 of serialized event). Shares the exact
+    // serialization with verifyNwcResponseEvent so the request and response
+    // id derivations can't drift.
+    const eventId = await computeNostrEventId(
+      pubkeyHex,
+      createdAt,
+      23194,
       event["tags"],
-      event["content"],
-    ]);
-    const idBytes = new Uint8Array(
-      await globalThis.crypto.subtle.digest(
-        "SHA-256",
-        new TextEncoder().encode(serialized),
-      ),
+      encryptedContent,
     );
-    const eventId = bytesToHex(idBytes);
     event["id"] = eventId;
 
     // Sign event with Schnorr
@@ -211,6 +329,23 @@ export class NwcWallet implements Wallet {
           if (msg[0] !== "EVENT" || msg[1] !== subId) return;
 
           const responseEvent = msg[2] as Record<string, unknown>;
+
+          // F-11: verify the response event is authentically from our wallet
+          // BEFORE decrypting/acting on its content. A relay only proves it
+          // relayed an event — it never proves authenticity. Without this a
+          // malicious/compromised relay or MITM could forge a pay_invoice
+          // response (matching our subscription filter) and feed us a bogus
+          // preimage. Drop unverified events and keep waiting for the real one.
+          const trusted = await verifyNwcResponseEvent(
+            responseEvent,
+            this._walletPubkey,
+            secp256k1,
+          );
+          if (!trusted) {
+            // Stay subscribed: a forged event must not abort a still-pending
+            // legitimate payment. Just ignore this message.
+            return;
+          }
 
           // Decrypt response
           const parts = (responseEvent["content"] as string).split("?iv=");
