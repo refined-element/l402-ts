@@ -200,19 +200,25 @@ export class NwcWallet implements Wallet {
    * Pay via NWC protocol (NIP-47 pay_invoice).
    *
    * This requires the optional peer dependencies `@noble/secp256k1` and `ws`.
-   * Install them with: `npm install @noble/secp256k1 ws`
+   * Install them with: `npm install "@noble/secp256k1@^1.7.1" ws`
+   *
+   * NOTE: pin @noble/secp256k1 to v1.x. The schnorr/getSharedSecret API this
+   * client uses only matches the v1.x line — v2.0.0 removed `schnorr` from the
+   * main export, and v3.x reintroduced it with an incompatible API (the NWC
+   * tests fail against both). A bare `npm install @noble/secp256k1` now pulls
+   * v3 and breaks NWC, hence the explicit `^1.7.1`.
    */
   async payInvoice(bolt11: string): Promise<string> {
     // Lazy-import optional dependencies. The `as string` cast on the module
     // specifier forces a dynamic import (bundlers leave it alone), which
-    // means TypeScript can't infer the return type — and we deliberately
-    // don't take @noble/secp256k1 as a devDependency (it's an optional peer
-    // dep for consumers, shouldn't show up in our own node_modules at
-    // build time). So we cast the resolved namespace to a minimal local
-    // interface that covers only the functions we actually call. That
-    // still catches future regressions where a hex string gets passed
-    // into `getSharedSecret`/`schnorr.sign` instead of a Uint8Array
-    // (exactly the bug that motivated this version of the code).
+    // means TypeScript can't infer the return type, so we cast the resolved
+    // namespace to a minimal local interface (`NobleSecp256k1`) covering only
+    // the functions we actually call. For consumers @noble/secp256k1 is an
+    // optional peer dependency (not bundled); it's also a devDependency here so
+    // the test suite can construct and verify real signatures. The minimal
+    // interface still catches regressions where a hex string gets passed into
+    // `getSharedSecret`/`schnorr.sign` instead of a Uint8Array (the bug that
+    // motivated this version of the code).
     let secp256k1: NobleSecp256k1;
     let WebSocketCtor: any;
     try {
@@ -221,7 +227,7 @@ export class NwcWallet implements Wallet {
       )) as unknown as NobleSecp256k1;
     } catch {
       throw new Error(
-        "NWC wallet requires @noble/secp256k1. Install with: npm install @noble/secp256k1",
+        'NWC wallet requires @noble/secp256k1 (v1.x). Install with: npm install "@noble/secp256k1@^1.7.1"',
       );
     }
     try {
