@@ -59,7 +59,7 @@
     "node": ">=18.0.0"
   },
   "peerDependencies": {
-    "@noble/secp256k1": ">=2.0.0",
+    "@noble/secp256k1": "^1.7.1",
     "ws": ">=8.0.0"
   },
   "peerDependenciesMeta": {
@@ -71,6 +71,7 @@
     }
   },
   "devDependencies": {
+    "@noble/secp256k1": "^1.7.1",
     "@types/node": "^25.2.3",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",

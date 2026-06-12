@@ -80,7 +80,7 @@ Set environment variables for your wallet. The library auto-detects in priority 
 NWC requires optional peer dependencies:
 
 ```bash
-npm install @noble/secp256k1 ws
+npm install "@noble/secp256k1@^1.7.1" ws
 export NWC_CONNECTION_STRING="nostr+walletconnect://pubkey?relay=wss://relay&secret=hex"
 ```
 
