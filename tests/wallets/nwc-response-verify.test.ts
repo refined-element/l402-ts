@@ -129,6 +129,23 @@ describe("verifyNwcResponseEvent — F-11 response signature verification", () =
     ).resolves.toBe(false);
   });
 
+  it("REJECTS a validly-signed event from the expected wallet whose kind is NOT 23195", async () => {
+    // The wallet signs a perfectly authentic event (correct pubkey, correct id,
+    // valid BIP340 sig) but at the wrong kind — e.g. an echoed 23194 request or
+    // any other NIP-47 kind. The NIP-47-response contract is kind 23195 only, so
+    // verification must fail purely on the kind mismatch even though the
+    // signature is genuine.
+    const walletPubkey = bytesToHex(secp.schnorr.getPublicKey(fixtureWalletSecret));
+    const wrongKind = await buildSignedResponseEvent(fixtureWalletSecret, {
+      kind: 23194,
+    });
+
+    expect(wrongKind.kind).toBe(23194);
+    await expect(
+      verifyNwcResponseEvent(wrongKind, walletPubkey, secp),
+    ).resolves.toBe(false);
+  });
+
   it("matches the expected pubkey case-insensitively", async () => {
     const walletPubkeyUpper = bytesToHex(
       secp.schnorr.getPublicKey(fixtureWalletSecret),

@@ -32,7 +32,16 @@ export interface NobleSecp256k1 {
     publicKey: Uint8Array,
   ) => Uint8Array;
   schnorr: {
-    sign: (message: Uint8Array, privateKey: Uint8Array) => Uint8Array;
+    // BIP340 sign. @noble/secp256k1 v1 returns a Promise<Uint8Array> whenever
+    // `utils.sha256Sync` is unset (the default), so this is async in practice;
+    // we always await it (a sync return is handled transparently too). Typing it
+    // as the sync-or-async union — and awaiting at the call site — closes the bug
+    // where an un-awaited Promise was serialized into the event's `sig` field,
+    // producing an invalid event the wallet/relay rejects.
+    sign: (
+      message: Uint8Array,
+      privateKey: Uint8Array,
+    ) => Uint8Array | Promise<Uint8Array>;
     // BIP340 verify. @noble/secp256k1 v1 returns a Promise<boolean>; we always
     // await it so a sync return is handled transparently too. We pass every
     // argument as a Uint8Array (never a hex string) to dodge the same
@@ -133,6 +142,13 @@ export async function verifyNwcResponseEvent(
     ) {
       return false;
     }
+
+    // 1b. This verifier is the gate for NIP-47 *responses* specifically, which
+    //     are kind 23195. Rejecting any other kind makes the response contract
+    //     explicit: even a validly-signed event from the wallet at the wrong
+    //     kind (e.g. a stray 23194 request echo) must not be treated as a
+    //     pay_invoice/get_balance response.
+    if (kind !== 23195) return false;
 
     // 2. Recompute the id from the canonical serialization — any tampered
     //    field (including the content the relay might rewrite to inject a bogus
@@ -300,8 +316,14 @@ export class NwcWallet implements Wallet {
     );
     event["id"] = eventId;
 
-    // Sign event with Schnorr
-    const sig: Uint8Array = secp256k1.schnorr.sign(hexToBytes(eventId), secretBytes);
+    // Sign event with Schnorr. schnorr.sign is async in @noble/secp256k1 v1
+    // (utils.sha256Sync unset) — it MUST be awaited. The un-awaited Promise
+    // previously serialized into `event.sig` as garbage, yielding an event the
+    // wallet/relay rejected (the bug nwc-sign.test.ts now guards). Normalize to
+    // a fresh Uint8Array so bytesToHex sees real bytes regardless of subtype.
+    const sig = new Uint8Array(
+      await secp256k1.schnorr.sign(hexToBytes(eventId), secretBytes),
+    );
     event["sig"] = bytesToHex(sig);
 
     // Connect to relay and send
