@@ -1,5 +1,8 @@
 # l402-requests
 
+[![Discord](https://img.shields.io/discord/1405389254892195951?label=community&logo=discord&color=5865F2)](https://discord.gg/rX7NxHY8vx)
+
+
 [![npm version](https://img.shields.io/npm/v/l402-requests.svg)](https://www.npmjs.com/package/l402-requests)
 [![npm downloads](https://img.shields.io/npm/dm/l402-requests.svg)](https://www.npmjs.com/package/l402-requests)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
