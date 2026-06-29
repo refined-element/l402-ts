@@ -64,6 +64,22 @@ export class NoWalletError extends L402Error {
   }
 }
 
+/**
+ * The configured wallet cannot fulfill L402's preimage requirement.
+ *
+ * Thrown by `L402Client` BEFORE attempting payment when the wallet's
+ * `supportsPreimage` is explicitly `false` (e.g. OpenNode). This is a
+ * precondition / configuration failure, NOT a payment-attempt failure —
+ * callers that catch `PaymentFailedError` to retry/log payment failures
+ * should NOT catch this one. No funds are spent.
+ */
+export class UnsupportedWalletError extends L402Error {
+  constructor(public readonly walletReason: string) {
+    super(`Wallet cannot be used for L402: ${walletReason}`);
+    this.name = "UnsupportedWalletError";
+  }
+}
+
 /** Domain is not in the allowed domains list. */
 export class DomainNotAllowedError extends L402Error {
   constructor(public readonly domain: string) {

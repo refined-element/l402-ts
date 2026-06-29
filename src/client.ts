@@ -8,7 +8,11 @@ import { extractAmountSats } from "./bolt11.js";
 import { BudgetController } from "./budget.js";
 import { findPaymentChallenge } from "./challenge.js";
 import { CredentialCache } from "./credential-cache.js";
-import { L402Error, PaymentFailedError } from "./errors.js";
+import {
+  L402Error,
+  PaymentFailedError,
+  UnsupportedWalletError,
+} from "./errors.js";
 import { SpendingLog } from "./spending-log.js";
 import type { Wallet, L402Options } from "./types.js";
 import { autoDetectWallet } from "./wallets/index.js";
@@ -99,16 +103,20 @@ export class L402Client {
     // Pay the invoice
     const wallet = await this._getWallet();
 
-    // Fail fast on wallets that can't surface the preimage — the L402 retry
-    // can't construct the Authorization header without one, so paying the
-    // invoice would spend funds for no access. Skip the wallet entirely
-    // and tell the caller to configure a preimage-capable backend.
-    if (!wallet.supportsPreimage) {
-      throw new PaymentFailedError(
-        "Configured wallet does not return Lightning payment preimages, " +
+    // Fail fast on wallets that EXPLICITLY can't surface the preimage — the
+    // L402 retry can't construct the Authorization header without one, so
+    // paying the invoice would spend funds for no access. Strict `=== false`
+    // check (not `!supportsPreimage`) so pre-existing custom wallets that
+    // pre-date the property are treated as preimage-capable by default and
+    // we only block adapters that opted out explicitly. Throws
+    // UnsupportedWalletError (NOT PaymentFailedError) since no payment is
+    // attempted — callers that distinguish payment failures from config
+    // failures can catch the two separately.
+    if (wallet.supportsPreimage === false) {
+      throw new UnsupportedWalletError(
+        "configured wallet does not return Lightning payment preimages, " +
           "which L402 requires. Use Strike, LND, or a compatible NWC " +
           "wallet (CoinOS, CLINK, Alby Hub) instead.",
-        challenge.invoice,
       );
     }
 

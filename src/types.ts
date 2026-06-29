@@ -2,22 +2,27 @@
 export interface Wallet {
   /**
    * Whether this adapter returns the BOLT11 payment preimage from `payInvoice`.
-   * `true` for adapters whose backend reliably surfaces the 32-byte preimage on
-   * settled outgoing payments (Strike, LND, NWC); `false` for adapters that
-   * don't (OpenNode). L402 cannot complete without a preimage, so callers can
-   * branch on this up front instead of trying to pay and catching
-   * `PaymentFailedError`.
+   *
+   * - `true` (or unset) — backend reliably surfaces the 32-byte preimage on
+   *   settled outgoing payments (Strike, LND, NWC, and custom adapters from
+   *   before this property existed). `L402Client` will use the wallet.
+   * - `false` — backend does not surface the preimage (OpenNode). `L402Client`
+   *   refuses to pay with this wallet, since L402 cannot complete without a
+   *   preimage and an attempt would just burn the invoice.
+   *
+   * Optional for backwards compatibility: pre-existing custom `Wallet`
+   * implementations that don't set this field are treated as `true` (assumed
+   * preimage-capable). Only an EXPLICIT `false` triggers the fail-fast path.
    */
-  readonly supportsPreimage: boolean;
+  readonly supportsPreimage?: boolean;
 
   /**
    * Pay a BOLT11 invoice and return the preimage (hex string).
    *
-   * When `supportsPreimage` is `false`, the payment itself may succeed but the
-   * adapter throws `PaymentFailedError` rather than returning, because the
-   * backend never surfaced the preimage. Callers that need to settle L402
-   * should check `supportsPreimage` first, or be prepared to catch
-   * `PaymentFailedError` and treat that wallet as ineligible.
+   * When `supportsPreimage` is `false`, the adapter still implements this
+   * method but `L402Client` will not call it. If you call this directly (not
+   * through `L402Client`), be prepared to catch `PaymentFailedError` from
+   * adapters that pay successfully but can't surface the preimage (OpenNode).
    */
   payInvoice(bolt11: string): Promise<string>;
 }
