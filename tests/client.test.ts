@@ -11,6 +11,7 @@ import type { Wallet } from "../src/types.js";
 /** A mock wallet that always returns a fixed preimage (hex string). */
 function mockWallet(preimage = "abc123def456"): Wallet {
   return {
+    supportsPreimage: true,
     payInvoice: vi.fn().mockResolvedValue(preimage),
   };
 }
@@ -18,6 +19,7 @@ function mockWallet(preimage = "abc123def456"): Wallet {
 /** A mock wallet that always fails. */
 function failingWallet(message = "payment failed"): Wallet {
   return {
+    supportsPreimage: true,
     payInvoice: vi.fn().mockRejectedValue(new Error(message)),
   };
 }

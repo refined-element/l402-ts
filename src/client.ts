@@ -98,6 +98,20 @@ export class L402Client {
 
     // Pay the invoice
     const wallet = await this._getWallet();
+
+    // Fail fast on wallets that can't surface the preimage — the L402 retry
+    // can't construct the Authorization header without one, so paying the
+    // invoice would spend funds for no access. Skip the wallet entirely
+    // and tell the caller to configure a preimage-capable backend.
+    if (!wallet.supportsPreimage) {
+      throw new PaymentFailedError(
+        "Configured wallet does not return Lightning payment preimages, " +
+          "which L402 requires. Use Strike, LND, or a compatible NWC " +
+          "wallet (CoinOS, CLINK, Alby Hub) instead.",
+        challenge.invoice,
+      );
+    }
+
     let preimage: string;
     try {
       preimage = await wallet.payInvoice(challenge.invoice);
