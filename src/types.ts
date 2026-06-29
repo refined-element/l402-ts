@@ -1,5 +1,15 @@
 /** Lightning wallet adapter interface. */
 export interface Wallet {
+  /**
+   * Whether this adapter returns the BOLT11 payment preimage from `payInvoice`.
+   * `true` for adapters whose backend reliably surfaces the 32-byte preimage on
+   * settled outgoing payments (Strike, LND, NWC); `false` for adapters that
+   * don't (OpenNode). L402 cannot complete without a preimage, so callers can
+   * branch on this up front instead of trying to pay and catching
+   * `PaymentFailedError`.
+   */
+  readonly supportsPreimage: boolean;
+
   /** Pay a BOLT11 invoice and return the preimage (hex string). */
   payInvoice(bolt11: string): Promise<string>;
 }

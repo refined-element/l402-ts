@@ -177,6 +177,8 @@ export async function verifyNwcResponseEvent(
 }
 
 export class NwcWallet implements Wallet {
+  readonly supportsPreimage = true;
+
   private _walletPubkey: string;
   private _relay: string;
   private _secret: string;

@@ -10,6 +10,8 @@ import type { Wallet } from "../types.js";
 import { PaymentFailedError } from "../errors.js";
 
 export class OpenNodeWallet implements Wallet {
+  readonly supportsPreimage = false;
+
   private _apiKey: string;
   private _baseUrl: string;
 
