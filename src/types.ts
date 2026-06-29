@@ -10,7 +10,15 @@ export interface Wallet {
    */
   readonly supportsPreimage: boolean;
 
-  /** Pay a BOLT11 invoice and return the preimage (hex string). */
+  /**
+   * Pay a BOLT11 invoice and return the preimage (hex string).
+   *
+   * When `supportsPreimage` is `false`, the payment itself may succeed but the
+   * adapter throws `PaymentFailedError` rather than returning, because the
+   * backend never surfaced the preimage. Callers that need to settle L402
+   * should check `supportsPreimage` first, or be prepared to catch
+   * `PaymentFailedError` and treat that wallet as ineligible.
+   */
   payInvoice(bolt11: string): Promise<string>;
 }
 
