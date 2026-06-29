@@ -65,6 +65,7 @@ export {
   InvoiceExpiredError,
   ChallengeParseError,
   NoWalletError,
+  UnsupportedWalletError,
   DomainNotAllowedError,
 } from "./errors.js";
 

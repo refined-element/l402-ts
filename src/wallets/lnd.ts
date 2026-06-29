@@ -8,6 +8,8 @@ import type { Wallet } from "../types.js";
 import { PaymentFailedError } from "../errors.js";
 
 export class LndWallet implements Wallet {
+  readonly supportsPreimage = true;
+
   private _host: string;
   private _macaroonHex: string;
 

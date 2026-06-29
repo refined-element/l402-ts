@@ -8,6 +8,8 @@ import type { Wallet } from "../types.js";
 import { PaymentFailedError } from "../errors.js";
 
 export class StrikeWallet implements Wallet {
+  readonly supportsPreimage = true;
+
   private _apiKey: string;
   private _baseUrl: string;
 

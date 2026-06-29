@@ -5,12 +5,14 @@ import {
   BudgetExceededError,
   PaymentFailedError,
   NoWalletError,
+  UnsupportedWalletError,
 } from "../src/errors.js";
 import type { Wallet } from "../src/types.js";
 
 /** A mock wallet that always returns a fixed preimage (hex string). */
 function mockWallet(preimage = "abc123def456"): Wallet {
   return {
+    supportsPreimage: true,
     payInvoice: vi.fn().mockResolvedValue(preimage),
   };
 }
@@ -18,6 +20,7 @@ function mockWallet(preimage = "abc123def456"): Wallet {
 /** A mock wallet that always fails. */
 function failingWallet(message = "payment failed"): Wallet {
   return {
+    supportsPreimage: true,
     payInvoice: vi.fn().mockRejectedValue(new Error(message)),
   };
 }
@@ -148,6 +151,48 @@ describe("L402Client", () => {
 
     expect(client.spendingLog.records).toHaveLength(1);
     expect(client.spendingLog.records[0].success).toBe(false);
+  });
+
+  it("refuses to pay with a wallet that opts out of preimage", async () => {
+    // OpenNode-like adapter: explicit supportsPreimage=false. L402Client must
+    // fail fast BEFORE calling payInvoice — otherwise the invoice is paid but
+    // the L402 retry can't construct the Authorization header. Funds gone.
+    const payInvoice = vi.fn().mockResolvedValue("never-called");
+    const noPreimageWallet: Wallet = {
+      supportsPreimage: false,
+      payInvoice,
+    };
+
+    const fetchMock = mockL402Fetch({}, "10u");
+    globalThis.fetch = fetchMock;
+
+    const client = new L402Client({ wallet: noPreimageWallet });
+
+    await expect(
+      client.get("https://api.example.com/paid"),
+    ).rejects.toThrow(UnsupportedWalletError);
+
+    // The wallet's payInvoice must NOT have been called — that's the whole
+    // point of failing fast.
+    expect(payInvoice).not.toHaveBeenCalled();
+  });
+
+  it("uses a wallet that leaves supportsPreimage undefined (back-compat)", async () => {
+    // A pre-existing custom wallet from before supportsPreimage existed has
+    // no such property. Strict `=== false` semantics in the client mean
+    // these wallets continue to work — only an EXPLICIT false blocks them.
+    const fetchMock = mockL402Fetch({ data: "ok" });
+    globalThis.fetch = fetchMock;
+
+    const legacyWallet: Wallet = {
+      payInvoice: vi.fn().mockResolvedValue("abc123"),
+      // supportsPreimage intentionally omitted
+    };
+    const client = new L402Client({ wallet: legacyWallet });
+    const response = await client.get("https://api.example.com/paid");
+
+    expect(response.status).toBe(200);
+    expect(legacyWallet.payInvoice).toHaveBeenCalledOnce();
   });
 
   it("uses cached credentials on subsequent requests", async () => {
