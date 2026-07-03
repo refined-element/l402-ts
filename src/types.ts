@@ -85,6 +85,14 @@ export interface PaymentRecord {
   preimage: string;
   timestamp: number;
   success: boolean;
+  /**
+   * Macaroon from the parsed 402 challenge, recorded at payment time.
+   * Together with `preimage` it forms the reusable L402 credential
+   * (`Authorization: L402 {macaroon}:{preimage}`) needed by two-step
+   * pay-then-claim flows. Empty string for MPP challenges (no macaroon).
+   * Optional for backward compatibility with records created before v0.4.
+   */
+  macaroon?: string;
 }
 
 /** Parsed L402 challenge from a WWW-Authenticate header. */

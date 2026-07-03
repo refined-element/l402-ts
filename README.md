@@ -147,6 +147,40 @@ console.log(`By domain:`, client.spendingLog.byDomain());
 console.log(client.spendingLog.toJSON());
 ```
 
+## Two-Step L402 Flows (Commerce)
+
+Some servers intentionally use a two-step L402 flow where payment and claim are separate endpoints. This is common for physical goods — it separates payment from fulfillment and allows the claim URL to be shared with a gift recipient.
+
+For example, the [Lightning Enable Store](https://store.lightningenable.com) returns a 402 on `POST /checkout`, and after payment you claim the order at `POST /claim` with the L402 credential.
+
+In these cases, `l402-requests` pays the invoice automatically. Retrieve the credential (macaroon + preimage) from the spending log, then make the claim request:
+
+```typescript
+import { L402Client, BudgetController } from 'l402-requests';
+
+const client = new L402Client({
+  budget: new BudgetController({ maxSatsPerRequest: 50000 }),
+});
+const checkout = await client.post("https://store.lightningenable.com/api/store/checkout", {
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ items: [{ productId: 2, quantity: 1, size: "L", color: "Black" }] }),
+});
+
+// Payment was made — retrieve the credential from the spending log
+const record = client.spendingLog.records.at(-1)!;
+console.log(`Paid ${record.amountSats} sats`);
+
+// Claim the order with the L402 credential
+const claim = await fetch("https://store.lightningenable.com/api/store/claim", {
+  method: "POST",
+  headers: {
+    "Authorization": `L402 ${record.macaroon}:${record.preimage}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify(claimDetails), // shipping details etc. — see the store's API docs
+});
+```
+
 ## Error Handling
 
 ```typescript
