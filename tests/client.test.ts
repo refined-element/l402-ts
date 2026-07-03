@@ -134,6 +134,8 @@ describe("L402Client", () => {
     expect(client.spendingLog.totalSpent()).toBe(1000);
     expect(client.spendingLog.records).toHaveLength(1);
     expect(client.spendingLog.records[0].preimage).toBe("aabb11");
+    // Macaroon from the parsed 402 challenge is exposed for two-step flows
+    expect(client.spendingLog.records[0].macaroon).toBe("mac123");
   });
 
   it("records failed payment in spending log", async () => {
@@ -151,6 +153,8 @@ describe("L402Client", () => {
 
     expect(client.spendingLog.records).toHaveLength(1);
     expect(client.spendingLog.records[0].success).toBe(false);
+    // Challenge macaroon is still recorded on failure
+    expect(client.spendingLog.records[0].macaroon).toBe("mac123");
   });
 
   it("refuses to pay with a wallet that opts out of preimage", async () => {
@@ -315,6 +319,9 @@ describe("L402Client", () => {
     expect(retryHeaders.get("Authorization")).toBe(
       'Payment method="lightning", preimage="deadbeef0123"',
     );
+
+    // MPP challenges carry no macaroon — recorded as empty string
+    expect(client.spendingLog.records[0].macaroon).toBe("");
   });
 
   it("prefers L402 over MPP when both available", async () => {

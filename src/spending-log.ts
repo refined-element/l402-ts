@@ -14,6 +14,7 @@ export class SpendingLog {
     amountSats: number,
     preimage: string,
     success: boolean = true,
+    macaroon: string = "",
   ): PaymentRecord {
     const entry: PaymentRecord = {
       domain,
@@ -22,6 +23,7 @@ export class SpendingLog {
       preimage,
       timestamp: Date.now(),
       success,
+      macaroon,
     };
     this._records.push(entry);
     return entry;

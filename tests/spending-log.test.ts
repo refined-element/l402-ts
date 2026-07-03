@@ -19,6 +19,14 @@ describe("SpendingLog", () => {
     expect(log.length).toBe(2);
   });
 
+  it("stores the macaroon when provided and defaults to empty string", () => {
+    const log = new SpendingLog();
+    const withMacaroon = log.record("a.com", "/api", 500, "pre1", true, "mac1");
+    const withoutMacaroon = log.record("b.com", "/api", 300, "pre2");
+    expect(withMacaroon.macaroon).toBe("mac1");
+    expect(withoutMacaroon.macaroon).toBe("");
+  });
+
   it("excludes failed payments from totals", () => {
     const log = new SpendingLog();
     log.record("a.com", "/api", 500, "pre1", true);

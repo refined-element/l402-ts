@@ -96,6 +96,12 @@ export class L402Client {
     // Extract amount and check budget
     const amountSats = extractAmountSats(challenge.invoice);
 
+    // Macaroon from the parsed challenge, recorded at payment time so
+    // two-step flows can rebuild `L402 {macaroon}:{preimage}` later.
+    // Use "macaroon" in challenge for natural type narrowing instead of
+    // casting; MPP challenges carry no macaroon.
+    const macaroonValue = "macaroon" in challenge ? challenge.macaroon : null;
+
     if (this._budget && amountSats !== null) {
       this._budget.check(amountSats, domain);
     }
@@ -125,7 +131,14 @@ export class L402Client {
       preimage = await wallet.payInvoice(challenge.invoice);
     } catch (e) {
       if (amountSats !== null) {
-        this.spendingLog.record(domain, parsed.pathname, amountSats, "", false);
+        this.spendingLog.record(
+          domain,
+          parsed.pathname,
+          amountSats,
+          "",
+          false,
+          macaroonValue ?? "",
+        );
       }
       if (e instanceof L402Error) throw e;
       throw new PaymentFailedError(
@@ -145,12 +158,11 @@ export class L402Client {
         amountSats,
         preimage,
         true,
+        macaroonValue ?? "",
       );
     }
 
     // Cache the credential and reuse CredentialCache.authorizationHeader() for retry
-    // Use "macaroon" in challenge for natural type narrowing instead of casting
-    const macaroonValue = "macaroon" in challenge ? challenge.macaroon : null;
     const credential = this._cache.put(domain, parsed.pathname, macaroonValue, preimage);
 
     // Retry with appropriate authorization header (delegated to CredentialCache)
