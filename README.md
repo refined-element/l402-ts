@@ -159,7 +159,9 @@ In these cases, `l402-requests` pays the invoice automatically. Retrieve the cre
 import { L402Client, BudgetController } from 'l402-requests';
 
 const client = new L402Client({
-  budget: new BudgetController({ maxSatsPerRequest: 50000 }),
+  // Store products cost ~48,000 sats incl. shipping — raise the hourly/daily
+  // caps too, or the default 10k/hour budget rejects the purchase.
+  budget: new BudgetController({ maxSatsPerRequest: 50000, maxSatsPerHour: 50000, maxSatsPerDay: 100000 }),
 });
 const checkout = await client.post("https://store.lightningenable.com/api/store/checkout", {
   headers: { "Content-Type": "application/json" },
