@@ -72,7 +72,7 @@ Set environment variables for your wallet. The library auto-detects in priority 
 | Priority | Wallet | Environment Variables | Preimage | Notes |
 |----------|--------|-----------------------|----------|-------|
 | 1 | LND | `LND_REST_HOST` + `LND_MACAROON_HEX` | Yes | Requires running a node |
-| 2 | NWC | `NWC_CONNECTION_STRING` | Yes | CoinOS, CLINK compatible |
+| 2 | NWC | `NWC_CONNECTION_STRING` | Yes | CoinOS, CLINK, Alby Hub compatible |
 | 3 | Strike | `STRIKE_API_KEY` | Yes | No infrastructure required |
 | 4 | OpenNode | `OPENNODE_API_KEY` | Limited | No preimage support |
 
@@ -86,6 +86,13 @@ NWC requires optional peer dependencies:
 npm install "@noble/secp256k1@^1.7.1" ws
 export NWC_CONNECTION_STRING="nostr+walletconnect://pubkey?relay=wss://relay&secret=hex"
 ```
+
+**Encryption (NIP-04 / NIP-44 v2):** by default the client auto-detects the wallet's
+supported encryption from its NIP-47 INFO event (kind 13194) and uses NIP-44 v2 when
+advertised (required by Alby Hub), otherwise NIP-04 (CoinOS, CLINK, Primal). If a
+wallet doesn't publish an INFO event you can pin the scheme with
+`NWC_ENCRYPTION=nip44_v2` (or `nip04`); the default is `auto`. A wrong scheme surfaces
+as a payment timeout because the wallet silently drops requests it can't decrypt.
 
 ### Explicit Wallet
 
