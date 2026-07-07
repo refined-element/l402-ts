@@ -167,8 +167,15 @@ class MockRelaySocket {
 }
 
 describe("NwcWallet.payInvoice — sign path (schnorr.sign must be awaited)", () => {
+  const priorEncryption = process.env["NWC_ENCRYPTION"];
+
   beforeEach(() => {
     MockRelaySocket.lastInstance = null;
+    // Pin NIP-04 so this sign-path test doesn't trigger the (default "auto")
+    // NIP-47 INFO-event fetch — that would open a second mock socket and stall
+    // on its 3s deadline. Outbound encryption negotiation is covered separately
+    // in nwc-nip44.test.ts; here we only care about the request signature.
+    process.env["NWC_ENCRYPTION"] = "nip04";
     // The dynamic `import("ws" as string)` resolves at runtime; vi.doMock
     // intercepts it. We only mock `ws` — secp256k1 stays REAL so the actual
     // (async) schnorr.sign is exercised; that's the whole point of this test.
@@ -176,6 +183,8 @@ describe("NwcWallet.payInvoice — sign path (schnorr.sign must be awaited)", ()
   });
 
   afterEach(() => {
+    if (priorEncryption === undefined) delete process.env["NWC_ENCRYPTION"];
+    else process.env["NWC_ENCRYPTION"] = priorEncryption;
     vi.doUnmock("ws");
     vi.resetModules();
   });
