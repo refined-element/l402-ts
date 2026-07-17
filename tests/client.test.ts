@@ -6,6 +6,7 @@ import {
   PaymentFailedError,
   NoWalletError,
   UnsupportedWalletError,
+  InvoiceAmountUnknownError,
 } from "../src/errors.js";
 import type { Wallet } from "../src/types.js";
 
@@ -23,6 +24,24 @@ function failingWallet(message = "payment failed"): Wallet {
     supportsPreimage: true,
     payInvoice: vi.fn().mockRejectedValue(new Error(message)),
   };
+}
+
+/**
+ * Build a mock fetch that returns a 402 carrying a verbatim invoice string.
+ *
+ * Unlike `mockL402Fetch`, the invoice is not assembled from an amount, so
+ * tests can hand the client amountless or malformed invoices. Always answers
+ * 402 — the client under test is expected to refuse before any retry.
+ */
+function mockL402FetchRawInvoice(invoice: string) {
+  return vi.fn().mockImplementation(async () => {
+    return new Response("Payment Required", {
+      status: 402,
+      headers: {
+        "WWW-Authenticate": `L402 macaroon="mac123", invoice="${invoice}"`,
+      },
+    });
+  });
 }
 
 /**
@@ -197,6 +216,105 @@ describe("L402Client", () => {
 
     expect(response.status).toBe(200);
     expect(legacyWallet.payInvoice).toHaveBeenCalledOnce();
+  });
+
+  // ── Invoices whose amount can't be determined ──
+  //
+  // `extractAmountSats` returns null both for invoices that encode no amount
+  // and for invoices it can't parse at all. Reading that null as "no limit
+  // applies" let a server hand over an amountless invoice and skip
+  // `budget.check` entirely — which is not only the sats limits but the domain
+  // allowlist too — and the spend never reached the log, so it stayed invisible
+  // to every later budget check as well. An amount we cannot determine is an
+  // amount we cannot authorise: refuse before spending.
+
+  it("refuses an invoice that encodes no amount instead of paying it", async () => {
+    const payInvoice = vi.fn().mockResolvedValue("never-called");
+    const wallet: Wallet = { supportsPreimage: true, payInvoice };
+
+    // "lnbc1ptest" — well-formed BOLT11 prefix, no amount encoded.
+    globalThis.fetch = mockL402FetchRawInvoice("lnbc1ptest");
+
+    const client = new L402Client({
+      wallet,
+      budget: new BudgetController({ maxSatsPerRequest: 5000 }),
+    });
+
+    await expect(
+      client.get("https://api.example.com/paid"),
+    ).rejects.toThrow(InvoiceAmountUnknownError);
+
+    // Refused BEFORE spending, and nothing recorded as spent.
+    expect(payInvoice).not.toHaveBeenCalled();
+    expect(client.spendingLog.records).toHaveLength(0);
+  });
+
+  it("reports why the amount was unknown", async () => {
+    globalThis.fetch = mockL402FetchRawInvoice("lnbc1ptest");
+    const client = new L402Client({ wallet: mockWallet() });
+
+    await expect(
+      client.get("https://api.example.com/paid"),
+    ).rejects.toMatchObject({
+      name: "InvoiceAmountUnknownError",
+      reason: "no-amount-encoded",
+      bolt11: "lnbc1ptest",
+    });
+  });
+
+  it("refuses an invoice that cannot be parsed as BOLT11", async () => {
+    const payInvoice = vi.fn().mockResolvedValue("never-called");
+    const wallet: Wallet = { supportsPreimage: true, payInvoice };
+
+    globalThis.fetch = mockL402FetchRawInvoice("not-a-bolt11-invoice");
+
+    const client = new L402Client({ wallet });
+
+    await expect(
+      client.get("https://api.example.com/paid"),
+    ).rejects.toMatchObject({
+      name: "InvoiceAmountUnknownError",
+      reason: "unparseable",
+    });
+    expect(payInvoice).not.toHaveBeenCalled();
+  });
+
+  it("refuses an amountless invoice from a domain outside the allowlist", async () => {
+    // The allowlist is enforced inside budget.check(), so skipping that call
+    // for a null amount disabled the allowlist as well — an amountless invoice
+    // from ANY domain got paid.
+    const payInvoice = vi.fn().mockResolvedValue("never-called");
+    const wallet: Wallet = { supportsPreimage: true, payInvoice };
+
+    globalThis.fetch = mockL402FetchRawInvoice("lnbc1ptest");
+
+    const client = new L402Client({
+      wallet,
+      budget: new BudgetController({
+        allowedDomains: new Set(["trusted.example.com"]),
+      }),
+    });
+
+    await expect(
+      client.get("https://evil.example.com/paid"),
+    ).rejects.toThrow(InvoiceAmountUnknownError);
+    expect(payInvoice).not.toHaveBeenCalled();
+  });
+
+  it("refuses an amountless invoice even with budgets disabled", async () => {
+    // An unknown amount is refused on its own merits: with `budget: null` the
+    // client still cannot tell the caller what it is about to spend.
+    const payInvoice = vi.fn().mockResolvedValue("never-called");
+    const wallet: Wallet = { supportsPreimage: true, payInvoice };
+
+    globalThis.fetch = mockL402FetchRawInvoice("lnbc1ptest");
+
+    const client = new L402Client({ wallet, budget: null });
+
+    await expect(
+      client.get("https://api.example.com/paid"),
+    ).rejects.toThrow(InvoiceAmountUnknownError);
+    expect(payInvoice).not.toHaveBeenCalled();
   });
 
   it("uses cached credentials on subsequent requests", async () => {

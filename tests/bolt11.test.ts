@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractAmountSats } from "../src/bolt11.js";
+import { classifyMissingAmount, extractAmountSats } from "../src/bolt11.js";
 
 describe("extractAmountSats", () => {
   it("parses micro-BTC (u) amounts", () => {
@@ -62,5 +62,27 @@ describe("extractAmountSats", () => {
   it("parses 2500 sats (25u)", () => {
     // lnbc25u → 25 * 0.000001 BTC = 2500 sats
     expect(extractAmountSats("lnbc25u1pxxxxxx")).toBe(2500);
+  });
+});
+
+describe("classifyMissingAmount", () => {
+  // extractAmountSats returns null for two very different reasons. Callers
+  // refuse either way, but the distinction tells a user whether the server
+  // sent an amountless invoice or something that isn't a BOLT11 at all.
+
+  it("reports a well-formed invoice with no amount", () => {
+    expect(classifyMissingAmount("lnbc1pxxxxxx")).toBe("no-amount-encoded");
+  });
+
+  it("reports a string that isn't BOLT11 at all", () => {
+    expect(classifyMissingAmount("not-a-bolt11")).toBe("unparseable");
+  });
+
+  it("reports an empty string as unparseable", () => {
+    expect(classifyMissingAmount("")).toBe("unparseable");
+  });
+
+  it("is case-insensitive", () => {
+    expect(classifyMissingAmount("LNBC1PXXXXXX")).toBe("no-amount-encoded");
   });
 });
