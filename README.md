@@ -74,9 +74,11 @@ Set environment variables for your wallet. The library auto-detects in priority 
 | 1 | LND | `LND_REST_HOST` + `LND_MACAROON_HEX` | Yes | Requires running a node |
 | 2 | NWC | `NWC_CONNECTION_STRING` | Yes | CoinOS, CLINK, Alby Hub compatible |
 | 3 | Strike | `STRIKE_API_KEY` | Yes | No infrastructure required |
-| 4 | OpenNode | `OPENNODE_API_KEY` | Limited | No preimage support |
+| 4 | OpenNode | `OPENNODE_API_KEY` | No | **Cannot be used for L402** — every 402 throws `UnsupportedWalletError` |
 
 > **Recommended: Strike** — Full preimage support and requires no infrastructure. Set `STRIKE_API_KEY` and you're done.
+
+> **OpenNode does not work with L402.** It returns no payment preimage, and L402 needs the preimage to build the `Authorization` header — a payment would settle and still buy no access. The client refuses before any funds move. OpenNode is still auto-detected, so an `OPENNODE_API_KEY`-only setup resolves to a wallet that rejects every request; use Strike, LND, or a compatible NWC wallet instead.
 
 ### NWC (Nostr Wallet Connect)
 
@@ -193,7 +195,14 @@ const claim = await fetch("https://store.lightningenable.com/api/store/claim", {
 ## Error Handling
 
 ```typescript
-import { L402Client, BudgetExceededError, PaymentFailedError, NoWalletError } from 'l402-requests';
+import {
+  L402Client,
+  BudgetExceededError,
+  InvoiceAmountUnknownError,
+  UnsupportedWalletError,
+  PaymentFailedError,
+  NoWalletError,
+} from 'l402-requests';
 
 const client = new L402Client();
 
@@ -202,22 +211,34 @@ try {
 } catch (e) {
   if (e instanceof BudgetExceededError) {
     console.log(`Over budget: ${e.limitType} limit is ${e.limitSats} sats`);
+  } else if (e instanceof InvoiceAmountUnknownError) {
+    console.log(`Refused unpriceable invoice: ${e.reason}`);
+  } else if (e instanceof UnsupportedWalletError) {
+    console.log(`Wallet unusable for L402: ${e.walletReason}`);
   } else if (e instanceof PaymentFailedError) {
     console.log(`Payment failed: ${e.reason}`);
   } else if (e instanceof NoWalletError) {
     console.log("No wallet configured");
+  } else {
+    throw e; // don't swallow what you didn't recognise
   }
 }
 ```
 
-| Exception | When |
-|-----------|------|
-| `BudgetExceededError` | Payment would exceed a budget limit |
-| `PaymentFailedError` | Lightning payment failed (routing, timeout, etc.) |
-| `InvoiceExpiredError` | Invoice expired before payment |
-| `NoWalletError` | No wallet env vars detected |
-| `DomainNotAllowedError` | Domain not in `allowedDomains` |
-| `ChallengeParseError` | Malformed L402 challenge header |
+| Exception | When | Funds moved |
+|-----------|------|-------------|
+| `BudgetExceededError` | Payment would exceed a budget limit | No |
+| `InvoiceAmountUnknownError` | Invoice amount could not be determined, so it could not be checked against your budget | No |
+| `UnsupportedWalletError` | Configured wallet cannot return preimages (OpenNode) | No |
+| `PaymentFailedError` | Lightning payment failed (routing, timeout, etc.) | Maybe |
+| `InvoiceExpiredError` | Invoice expired before payment | No |
+| `NoWalletError` | No wallet env vars detected | No |
+| `DomainNotAllowedError` | Domain not in `allowedDomains` | No |
+| `ChallengeParseError` | Malformed L402 challenge header | No |
+
+Every error above extends `L402Error`, so `e instanceof L402Error` catches the lot.
+
+`InvoiceAmountUnknownError` (new in 0.6.0) and `UnsupportedWalletError` are *precondition* failures thrown before any payment is attempted, so neither extends `PaymentFailedError`. An `instanceof` chain with no branch for them — like this example before 0.6.0 — swallows them silently instead of reporting them. That is why the example now ends in `throw e`.
 
 ## Also Available
 

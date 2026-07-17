@@ -4,11 +4,12 @@
  * Drop-in enhancement to fetch(). Any API behind an L402 paywall just works.
  */
 
-import { extractAmountSats } from "./bolt11.js";
+import { classifyMissingAmount, extractAmountSats } from "./bolt11.js";
 import { BudgetController } from "./budget.js";
 import { findPaymentChallenge } from "./challenge.js";
 import { CredentialCache } from "./credential-cache.js";
 import {
+  InvoiceAmountUnknownError,
   L402Error,
   PaymentFailedError,
   UnsupportedWalletError,
@@ -102,7 +103,20 @@ export class L402Client {
     // casting; MPP challenges carry no macaroon.
     const macaroonValue = "macaroon" in challenge ? challenge.macaroon : null;
 
-    if (this._budget && amountSats !== null) {
+    // An amount we can't determine is an amount we can't authorise. Paying
+    // anyway would skip `budget.check` entirely — and that call is not just the
+    // per-request/hour/day sats limits but the domain allowlist too — while the
+    // spend would also never reach the log below, hiding it from every LATER
+    // budget check. A server that wants a blank cheque only has to send an
+    // amountless invoice. Refuse instead, before any funds move.
+    if (amountSats === null) {
+      throw new InvoiceAmountUnknownError(
+        classifyMissingAmount(challenge.invoice),
+        challenge.invoice,
+      );
+    }
+
+    if (this._budget) {
       this._budget.check(amountSats, domain);
     }
 
@@ -130,16 +144,14 @@ export class L402Client {
     try {
       preimage = await wallet.payInvoice(challenge.invoice);
     } catch (e) {
-      if (amountSats !== null) {
-        this.spendingLog.record(
-          domain,
-          parsed.pathname,
-          amountSats,
-          "",
-          false,
-          macaroonValue ?? "",
-        );
-      }
+      this.spendingLog.record(
+        domain,
+        parsed.pathname,
+        amountSats,
+        "",
+        false,
+        macaroonValue ?? "",
+      );
       if (e instanceof L402Error) throw e;
       throw new PaymentFailedError(
         String(e instanceof Error ? e.message : e),
@@ -147,20 +159,20 @@ export class L402Client {
       );
     }
 
-    // Record successful payment
-    if (amountSats !== null) {
-      if (this._budget) {
-        this._budget.recordPayment(amountSats);
-      }
-      this.spendingLog.record(
-        domain,
-        parsed.pathname,
-        amountSats,
-        preimage,
-        true,
-        macaroonValue ?? "",
-      );
+    // Record successful payment. `amountSats` is always known by this point —
+    // unknown amounts were refused above — so every payment the client makes
+    // lands in the budget and the log, with no silent gaps.
+    if (this._budget) {
+      this._budget.recordPayment(amountSats);
     }
+    this.spendingLog.record(
+      domain,
+      parsed.pathname,
+      amountSats,
+      preimage,
+      true,
+      macaroonValue ?? "",
+    );
 
     // Cache the credential and reuse CredentialCache.authorizationHeader() for retry
     const credential = this._cache.put(domain, parsed.pathname, macaroonValue, preimage);

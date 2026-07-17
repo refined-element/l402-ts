@@ -46,7 +46,8 @@ export {
 } from "./challenge.js";
 
 // BOLT11 parsing
-export { extractAmountSats } from "./bolt11.js";
+export { extractAmountSats, classifyMissingAmount } from "./bolt11.js";
+export type { MissingAmountReason } from "./bolt11.js";
 
 // Wallets
 export {
@@ -66,6 +67,7 @@ export {
   ChallengeParseError,
   NoWalletError,
   UnsupportedWalletError,
+  InvoiceAmountUnknownError,
   DomainNotAllowedError,
 } from "./errors.js";
 

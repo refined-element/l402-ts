@@ -1,8 +1,41 @@
+import type { MissingAmountReason } from "./bolt11.js";
+
 /** Base exception for l402-requests. */
 export class L402Error extends Error {
   constructor(message: string) {
     super(message);
     this.name = "L402Error";
+  }
+}
+
+const MISSING_AMOUNT_DETAIL: Record<MissingAmountReason, string> = {
+  "no-amount-encoded": "the invoice encodes no amount",
+  unparseable: "the invoice could not be parsed as BOLT11",
+};
+
+/**
+ * The invoice amount could not be determined, so payment was refused.
+ *
+ * Thrown by `L402Client` BEFORE attempting payment. An amount we cannot read
+ * is an amount we cannot check against the budget limits or the domain
+ * allowlist, and one that would never reach the spending log — so paying it
+ * would spend an unknown sum with every control silently skipped. Refusing is
+ * the only safe answer. No funds are spent.
+ *
+ * Like `UnsupportedWalletError`, this is a precondition failure rather than a
+ * payment failure: callers catching `PaymentFailedError` should NOT expect it.
+ */
+export class InvoiceAmountUnknownError extends L402Error {
+  constructor(
+    public readonly reason: MissingAmountReason,
+    public readonly bolt11?: string,
+  ) {
+    super(
+      `Refusing to pay: ${MISSING_AMOUNT_DETAIL[reason]}, so its amount ` +
+        `cannot be checked against your budget. Only invoices with an ` +
+        `explicit amount are supported.`,
+    );
+    this.name = "InvoiceAmountUnknownError";
   }
 }
 
