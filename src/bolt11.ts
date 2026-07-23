@@ -10,9 +10,27 @@
  * Uses BigInt internally to avoid floating-point precision issues.
  */
 
-// Match: ln + network + optional(amount + optional multiplier) + "1" separator
-const BOLT11_RE =
-  /^ln(?<network>[a-z]+?)(?<amount>\d+)?(?<multiplier>[munp])?1/i;
+// Match the WHOLE human-readable part: ln + network + optional(amount +
+// multiplier). Terminated with "$" (not a trailing "1") so it only ever matches
+// a complete HRP, never a prefix that stops at an earlier "1". The HRP is
+// isolated first (humanReadablePart); anchoring here as well means a digit
+// sitting in the bech32 data part can never be lifted out as the amount.
+const BOLT11_HRP_RE =
+  /^ln(?<network>[a-z]+?)(?<amount>\d+)?(?<multiplier>[munp])?$/i;
+
+/**
+ * The BOLT11 human-readable part — everything before the bech32 separator,
+ * which per BIP-173 is the LAST "1" (the data charset excludes "1", so every
+ * earlier "1" belongs to the HRP, only ever inside the amount). Isolating the
+ * HRP with lastIndexOf — rather than letting a regex stop at the FIRST "1" — is
+ * what stops a digit in the data part being read as the amount (ledger #74).
+ * Returns null when there is no separator at all.
+ */
+function humanReadablePart(bolt11: string): string | null {
+  const invoice = bolt11.trim().toLowerCase();
+  const separator = invoice.lastIndexOf("1");
+  return separator < 0 ? null : invoice.slice(0, separator);
+}
 
 // Multipliers expressed as rational numbers: numerator / denominator
 // to avoid floating-point. Result = amount * num / denom (in BTC),
@@ -57,10 +75,10 @@ export type MissingAmountReason = "no-amount-encoded" | "unparseable";
 export function classifyMissingAmount(bolt11: string): MissingAmountReason {
   if (!bolt11) return "unparseable";
 
-  const match = bolt11.trim().toLowerCase().match(BOLT11_RE);
-  if (!match?.groups) return "unparseable";
+  const hrp = humanReadablePart(bolt11);
+  if (hrp === null || !BOLT11_HRP_RE.test(hrp)) return "unparseable";
 
-  // The prefix read cleanly, so a missing amount group is the only way
+  // The HRP read cleanly, so a missing amount group is the only way
   // `extractAmountSats` could have returned null for this invoice.
   return "no-amount-encoded";
 }
@@ -78,8 +96,10 @@ export function classifyMissingAmount(bolt11: string): MissingAmountReason {
 export function extractAmountSats(bolt11: string): number | null {
   if (!bolt11) return null;
 
-  const invoice = bolt11.trim().toLowerCase();
-  const match = BOLT11_RE.exec(invoice);
+  const hrp = humanReadablePart(bolt11);
+  if (hrp === null) return null;
+
+  const match = hrp.match(BOLT11_HRP_RE);
   if (!match?.groups) return null;
 
   const amountStr = match.groups["amount"];

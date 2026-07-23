@@ -65,6 +65,43 @@ describe("extractAmountSats", () => {
   });
 });
 
+describe("HRP anchoring (ledger #74)", () => {
+  // The amount must be read ONLY from the human-readable part — everything
+  // before the LAST "1" separator. The bech32 data charset excludes "1", so the
+  // final "1" is always the true separator. A decoder that stops at an EARLIER
+  // "1" can lift a small bogus amount out of a crafted stray segment, report a
+  // positive number the invoice does not actually encode, and sail through a
+  // budget check (which the <= 0 guard cannot catch — it is positive).
+
+  it("does not read an amount before a later separator", () => {
+    // First "1" sits right after "9u", so an un-anchored decoder reports
+    // 9u = 900 sats. The real separator is the LAST "1", making the true HRP
+    // "lnbc9u1qpzq" — not a valid amount HRP — so the amount is unknown.
+    expect(
+      extractAmountSats("lnbc9u1qpzq1qpzry9x8gf2tvdw0s3jn54khce6mua7l"),
+    ).toBeNull();
+  });
+
+  it("does not read an amount from inside the data part", () => {
+    // Reference examples from le-agent-sdk-python's hardened decoder.
+    expect(extractAmountSats("lnbc1pabc9u1def")).toBeNull();
+    expect(extractAmountSats("lnbc1pvjl5p1uez")).toBeNull();
+  });
+
+  it("classifies a crafted data-part invoice as unparseable, not priced", () => {
+    const crafted = "lnbc9u1qpzq1qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+    expect(extractAmountSats(crafted)).toBeNull();
+    expect(classifyMissingAmount(crafted)).toBe("unparseable");
+  });
+
+  it("still decodes legitimate single-separator invoices", () => {
+    // HRP anchoring must not over-reject, including amounts whose digits hold "1".
+    expect(extractAmountSats("lnbc10u1pdata")).toBe(1000);
+    expect(extractAmountSats("lnbc1500n1pdata")).toBe(150);
+    expect(extractAmountSats("lnbc1m1pdata")).toBe(100000);
+  });
+});
+
 describe("classifyMissingAmount", () => {
   // extractAmountSats returns null for two very different reasons. Callers
   // refuse either way, but the distinction tells a user whether the server

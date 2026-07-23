@@ -317,6 +317,79 @@ describe("L402Client", () => {
     expect(payInvoice).not.toHaveBeenCalled();
   });
 
+  it("refuses an MPP challenge with amount=0 on an amountless invoice (ledger #42)", async () => {
+    // An MPP amount=0 resolving onto an amountless invoice is a blank cheque:
+    // the wallet, not the server, would pick the spend. This port refuses it
+    // because it prices the request purely from the BOLT11 invoice and does NOT
+    // read the MPP `amount` param (adding that is deferred ledger #72), so an
+    // amountless invoice is unbounded regardless of the MPP amount. That is the
+    // safe outcome for #42. This test pins it EXPLICITLY so the refusal can't
+    // silently regress to a 0-sat payment if MPP-amount support is ever added.
+    const payInvoice = vi.fn().mockResolvedValue("never-called");
+    const wallet: Wallet = { supportsPreimage: true, payInvoice };
+
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      return new Response("Payment Required", {
+        status: 402,
+        headers: {
+          "WWW-Authenticate":
+            'Payment realm="api.example.com", method="lightning", invoice="lnbc1ptest", amount="0", currency="sat"',
+        },
+      });
+    });
+
+    const client = new L402Client({
+      wallet,
+      budget: new BudgetController({ maxSatsPerRequest: 5000 }),
+    });
+
+    await expect(
+      client.get("https://api.example.com/paid"),
+    ).rejects.toMatchObject({
+      name: "InvoiceAmountUnknownError",
+      reason: "no-amount-encoded",
+      bolt11: "lnbc1ptest",
+    });
+    // Refused BEFORE spending, and nothing recorded as spent.
+    expect(payInvoice).not.toHaveBeenCalled();
+    expect(client.spendingLog.records).toHaveLength(0);
+  });
+
+  it("refuses a literal-zero BOLT11 invoice instead of paying it (ledger #42)", async () => {
+    // "lnbc0p1..." DECODES to 0, not null — the amount field is present, it is
+    // just zero — so a bare null-check lets it through, budget.check(0) passes,
+    // and the wallet (not the server) picks the spend. The #42 fix only refused
+    // the null case; the resolved amount must be strictly positive too.
+    const payInvoice = vi.fn().mockResolvedValue("never-called");
+    const wallet: Wallet = { supportsPreimage: true, payInvoice };
+
+    globalThis.fetch = mockL402FetchRawInvoice("lnbc0p1ptest");
+
+    // budget: null so the refusal is on the amount's own merits, budget or not.
+    const client = new L402Client({ wallet, budget: null });
+
+    await expect(
+      client.get("https://api.example.com/paid"),
+    ).rejects.toThrow(InvoiceAmountUnknownError);
+
+    // Refused BEFORE spending, and nothing recorded as spent.
+    expect(payInvoice).not.toHaveBeenCalled();
+    expect(client.spendingLog.records).toHaveLength(0);
+  });
+
+  it("still pays a strictly positive BOLT11 amount (no over-rejection)", async () => {
+    // Guard against the zero-amount refusal over-rejecting: lnbc10u = 1000 sats.
+    const fetchMock = mockL402Fetch({ data: "paid" });
+    globalThis.fetch = fetchMock;
+
+    const wallet = mockWallet();
+    const client = new L402Client({ wallet });
+    const response = await client.get("https://api.example.com/paid");
+
+    expect(response.status).toBe(200);
+    expect(wallet.payInvoice).toHaveBeenCalledTimes(1);
+  });
+
   it("uses cached credentials on subsequent requests", async () => {
     let callCount = 0;
     const fetchMock = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {

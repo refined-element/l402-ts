@@ -109,7 +109,13 @@ export class L402Client {
     // spend would also never reach the log below, hiding it from every LATER
     // budget check. A server that wants a blank cheque only has to send an
     // amountless invoice. Refuse instead, before any funds move.
-    if (amountSats === null) {
+    //
+    // `<= 0` is refused alongside null: a literal-zero invoice ("lnbc0p1...")
+    // DECODES to 0, not null — the amount field is present, it is just zero — so
+    // a bare null-check waves it through, budget.check(0) passes, and the wallet
+    // (not the server) then picks the spend. The resolved amount must be
+    // strictly positive, the same blank-cheque hole ledger #42 closes for MPP.
+    if (amountSats === null || amountSats <= 0) {
       throw new InvoiceAmountUnknownError(
         classifyMissingAmount(challenge.invoice),
         challenge.invoice,
