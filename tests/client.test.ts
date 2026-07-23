@@ -355,6 +355,41 @@ describe("L402Client", () => {
     expect(client.spendingLog.records).toHaveLength(0);
   });
 
+  it("refuses a literal-zero BOLT11 invoice instead of paying it (ledger #42)", async () => {
+    // "lnbc0p1..." DECODES to 0, not null — the amount field is present, it is
+    // just zero — so a bare null-check lets it through, budget.check(0) passes,
+    // and the wallet (not the server) picks the spend. The #42 fix only refused
+    // the null case; the resolved amount must be strictly positive too.
+    const payInvoice = vi.fn().mockResolvedValue("never-called");
+    const wallet: Wallet = { supportsPreimage: true, payInvoice };
+
+    globalThis.fetch = mockL402FetchRawInvoice("lnbc0p1ptest");
+
+    // budget: null so the refusal is on the amount's own merits, budget or not.
+    const client = new L402Client({ wallet, budget: null });
+
+    await expect(
+      client.get("https://api.example.com/paid"),
+    ).rejects.toThrow(InvoiceAmountUnknownError);
+
+    // Refused BEFORE spending, and nothing recorded as spent.
+    expect(payInvoice).not.toHaveBeenCalled();
+    expect(client.spendingLog.records).toHaveLength(0);
+  });
+
+  it("still pays a strictly positive BOLT11 amount (no over-rejection)", async () => {
+    // Guard against the zero-amount refusal over-rejecting: lnbc10u = 1000 sats.
+    const fetchMock = mockL402Fetch({ data: "paid" });
+    globalThis.fetch = fetchMock;
+
+    const wallet = mockWallet();
+    const client = new L402Client({ wallet });
+    const response = await client.get("https://api.example.com/paid");
+
+    expect(response.status).toBe(200);
+    expect(wallet.payInvoice).toHaveBeenCalledTimes(1);
+  });
+
   it("uses cached credentials on subsequent requests", async () => {
     let callCount = 0;
     const fetchMock = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
