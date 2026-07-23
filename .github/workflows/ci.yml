@@ -1,0 +1,52 @@
+name: CI
+
+# Gates code BEFORE it can merge to main. A push to main that changes
+# package.json auto-publishes to npm (publish-npm.yml) with no other test
+# gate in front of it, so every PR must pass this first. Adding/editing this
+# file does NOT change package.json (nor publish-npm.yml), so it never
+# triggers a publish.
+#
+# Runs the self-contained vitest suite plus typecheck and build — the same
+# checks the publish workflow runs — so a PR that would break the release is
+# caught here. No database, secrets, or network required.
+on:
+  pull_request:
+  push:
+    branches-ignore:
+      - main
+  workflow_dispatch:
+
+# One in-flight run per branch/PR; newer pushes cancel stale runs.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
