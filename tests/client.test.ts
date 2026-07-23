@@ -317,6 +317,44 @@ describe("L402Client", () => {
     expect(payInvoice).not.toHaveBeenCalled();
   });
 
+  it("refuses an MPP challenge with amount=0 on an amountless invoice (ledger #42)", async () => {
+    // An MPP amount=0 resolving onto an amountless invoice is a blank cheque:
+    // the wallet, not the server, would pick the spend. This port refuses it
+    // because it prices the request purely from the BOLT11 invoice and does NOT
+    // read the MPP `amount` param (adding that is deferred ledger #72), so an
+    // amountless invoice is unbounded regardless of the MPP amount. That is the
+    // safe outcome for #42. This test pins it EXPLICITLY so the refusal can't
+    // silently regress to a 0-sat payment if MPP-amount support is ever added.
+    const payInvoice = vi.fn().mockResolvedValue("never-called");
+    const wallet: Wallet = { supportsPreimage: true, payInvoice };
+
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      return new Response("Payment Required", {
+        status: 402,
+        headers: {
+          "WWW-Authenticate":
+            'Payment realm="api.example.com", method="lightning", invoice="lnbc1ptest", amount="0", currency="sat"',
+        },
+      });
+    });
+
+    const client = new L402Client({
+      wallet,
+      budget: new BudgetController({ maxSatsPerRequest: 5000 }),
+    });
+
+    await expect(
+      client.get("https://api.example.com/paid"),
+    ).rejects.toMatchObject({
+      name: "InvoiceAmountUnknownError",
+      reason: "no-amount-encoded",
+      bolt11: "lnbc1ptest",
+    });
+    // Refused BEFORE spending, and nothing recorded as spent.
+    expect(payInvoice).not.toHaveBeenCalled();
+    expect(client.spendingLog.records).toHaveLength(0);
+  });
+
   it("uses cached credentials on subsequent requests", async () => {
     let callCount = 0;
     const fetchMock = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
