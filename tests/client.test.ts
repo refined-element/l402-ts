@@ -650,6 +650,11 @@ describe("L402Client", () => {
 
     const p1 = client.get("https://api.example.com/paid");
     const p2 = client.get("https://api.example.com/paid");
+    // Attach the settlement handler SYNCHRONOUSLY, before any await — otherwise the
+    // loser's BudgetExceededError rejects during the setTimeout gap below with no
+    // handler attached, triggering an unhandledRejection that fails `vitest run`
+    // (exit 1) even though the assertions pass.
+    const settled = Promise.allSettled([p1, p2]);
 
     // Let both calls run to their await points: one reserves and hangs on
     // payInvoice, the other is denied at reserve() before any funds move.
@@ -658,7 +663,7 @@ describe("L402Client", () => {
     // Release the gate so the reserved payment settles.
     releaseGate();
 
-    const results = await Promise.allSettled([p1, p2]);
+    const results = await settled;
     const fulfilled = results.filter((r) => r.status === "fulfilled");
     const rejected = results.filter((r) => r.status === "rejected");
 
@@ -677,5 +682,38 @@ describe("L402Client", () => {
     expect(payInvoice).toHaveBeenCalledTimes(1);
     expect(budget.spentLastHour()).toBe(1000);
     expect(budget.spentLastHour()).toBeLessThanOrEqual(1500);
+  });
+
+  it("releases the reservation when payment fails, leaving the budget intact", async () => {
+    // The whole point of reserve/release is that a failed payment must not strand its
+    // reservation (which would progressively starve the budget). Guard against a
+    // regression that dropped the release() call.
+    globalThis.fetch = mockL402FetchConcurrent({ ok: true }, "10u"); // 1000 sats
+    const budget = new BudgetController({
+      maxSatsPerRequest: 1000,
+      maxSatsPerHour: 1000,
+      maxSatsPerDay: 50000,
+    });
+
+    // First payment fails at the wallet -> its reservation must be released.
+    const failing: Wallet = {
+      supportsPreimage: true,
+      payInvoice: vi.fn().mockRejectedValue(new Error("wallet down")),
+    };
+    await expect(
+      new L402Client({ wallet: failing, budget }).get("https://api.example.com/paid"),
+    ).rejects.toThrow();
+    expect(budget.spentLastHour()).toBe(0);
+
+    // Budget fully recovered: a fresh full-cap payment still fits and settles.
+    const working: Wallet = {
+      supportsPreimage: true,
+      payInvoice: vi.fn().mockResolvedValue("deadbeef0123"),
+    };
+    const resp = await new L402Client({ wallet: working, budget }).get(
+      "https://api.example.com/paid",
+    );
+    expect(resp.status).toBe(200);
+    expect(budget.spentLastHour()).toBe(1000);
   });
 });
