@@ -45,6 +45,34 @@ function mockL402FetchRawInvoice(invoice: string) {
 }
 
 /**
+ * Concurrency-safe mock fetch: returns 200 whenever the request carries an
+ * `Authorization: L402 …` header, else a 402 L402 challenge. Unlike
+ * `mockL402Fetch` it keys off the header rather than a shared call counter, so
+ * it stays correct when several requests are in flight at once.
+ */
+function mockL402FetchConcurrent(
+  data: unknown = { ok: true },
+  invoiceAmount = "10u",
+) {
+  return vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
+    const hasAuth = headers.get("Authorization")?.startsWith("L402 ");
+    if (hasAuth) {
+      return new Response(JSON.stringify(data), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response("Payment Required", {
+      status: 402,
+      headers: {
+        "WWW-Authenticate": `L402 macaroon="mac123", invoice="lnbc${invoiceAmount}1ptest"`,
+      },
+    });
+  });
+}
+
+/**
  * Build a mock fetch that returns 402 on first call and 200 on retry.
  * The 402 response includes a valid L402 challenge header.
  */
@@ -584,5 +612,108 @@ describe("L402Client", () => {
     expect(fetchMock.mock.calls[3][1].method).toBe("DELETE");
     expect(fetchMock.mock.calls[4][1].method).toBe("PATCH");
     expect(fetchMock.mock.calls[5][1].method).toBe("HEAD");
+  });
+
+  // ── Concurrency: the reserve/commit funds-safety race ──
+  //
+  // The old flow was check() → await payInvoice() → recordPayment(). Two
+  // concurrent fetch() calls both passed check() against the still-unrecorded
+  // total, both settled at the wallet, and the window cap was blown — a
+  // classic check-then-act TOCTOU. The reservation lifecycle closes it: the
+  // spend is reserved SYNCHRONOUSLY (no await inside reserve) before the client
+  // yields to the event loop for payment, so the second reserve sees the first
+  // and is refused.
+  it("does not exceed the window cap when two payments race (reserve/commit)", async () => {
+    globalThis.fetch = mockL402FetchConcurrent({ ok: true }, "10u"); // 10u = 1000 sats
+
+    // Gate-controlled wallet: payInvoice hangs until the test releases it, so
+    // both concurrent calls are guaranteed to have reached their reserve step
+    // while the first payment is still in flight (nothing recorded yet).
+    let releaseGate!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseGate = resolve;
+    });
+    const payInvoice = vi.fn().mockImplementation(async () => {
+      await gate;
+      return "deadbeef0123";
+    });
+    const wallet: Wallet = { supportsPreimage: true, payInvoice };
+
+    // Per-request 2000 (each 1000-sat call passes), but hourly 1500 (the two
+    // together — 2000 — must not both go through).
+    const budget = new BudgetController({
+      maxSatsPerRequest: 2000,
+      maxSatsPerHour: 1500,
+      maxSatsPerDay: 50000,
+    });
+    const client = new L402Client({ wallet, budget });
+
+    const p1 = client.get("https://api.example.com/paid");
+    const p2 = client.get("https://api.example.com/paid");
+    // Attach the settlement handler SYNCHRONOUSLY, before any await — otherwise the
+    // loser's BudgetExceededError rejects during the setTimeout gap below with no
+    // handler attached, triggering an unhandledRejection that fails `vitest run`
+    // (exit 1) even though the assertions pass.
+    const settled = Promise.allSettled([p1, p2]);
+
+    // Let both calls run to their await points: one reserves and hangs on
+    // payInvoice, the other is denied at reserve() before any funds move.
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Release the gate so the reserved payment settles.
+    releaseGate();
+
+    const results = await settled;
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+
+    // Exactly one succeeded; the other was refused by the budget.
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(
+      (fulfilled[0] as PromiseFulfilledResult<Response>).value.status,
+    ).toBe(200);
+    expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(
+      BudgetExceededError,
+    );
+
+    // Only one payment actually happened, and the window total never exceeded
+    // the 1500-sat cap.
+    expect(payInvoice).toHaveBeenCalledTimes(1);
+    expect(budget.spentLastHour()).toBe(1000);
+    expect(budget.spentLastHour()).toBeLessThanOrEqual(1500);
+  });
+
+  it("releases the reservation when payment fails, leaving the budget intact", async () => {
+    // The whole point of reserve/release is that a failed payment must not strand its
+    // reservation (which would progressively starve the budget). Guard against a
+    // regression that dropped the release() call.
+    globalThis.fetch = mockL402FetchConcurrent({ ok: true }, "10u"); // 1000 sats
+    const budget = new BudgetController({
+      maxSatsPerRequest: 1000,
+      maxSatsPerHour: 1000,
+      maxSatsPerDay: 50000,
+    });
+
+    // First payment fails at the wallet -> its reservation must be released.
+    const failing: Wallet = {
+      supportsPreimage: true,
+      payInvoice: vi.fn().mockRejectedValue(new Error("wallet down")),
+    };
+    await expect(
+      new L402Client({ wallet: failing, budget }).get("https://api.example.com/paid"),
+    ).rejects.toThrow();
+    expect(budget.spentLastHour()).toBe(0);
+
+    // Budget fully recovered: a fresh full-cap payment still fits and settles.
+    const working: Wallet = {
+      supportsPreimage: true,
+      payInvoice: vi.fn().mockResolvedValue("deadbeef0123"),
+    };
+    const resp = await new L402Client({ wallet: working, budget }).get(
+      "https://api.example.com/paid",
+    );
+    expect(resp.status).toBe(200);
+    expect(budget.spentLastHour()).toBe(1000);
   });
 });

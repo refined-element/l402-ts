@@ -122,54 +122,78 @@ export class L402Client {
       );
     }
 
+    // Reserve the spend SYNCHRONOUSLY — before any `await` yields to the event
+    // loop for the payment. The reservation counts against the window limits
+    // immediately, so a concurrent fetch() cannot also pass its budget check
+    // while this payment is still settling. This closes the old
+    // check → await payInvoice → recordPayment TOCTOU race, where two
+    // concurrent calls both passed check() against the not-yet-recorded total
+    // and both settled, blowing the cap. reserve() throws (DomainNotAllowed /
+    // BudgetExceeded) before recording anything, so a refused reservation
+    // leaves no state to unwind. On success we commit(), on any failure we
+    // release() — see the try/catch below.
+    let reservationId: string | null = null;
     if (this._budget) {
-      this._budget.check(amountSats, domain);
-    }
-
-    // Pay the invoice
-    const wallet = await this._getWallet();
-
-    // Fail fast on wallets that EXPLICITLY can't surface the preimage — the
-    // L402 retry can't construct the Authorization header without one, so
-    // paying the invoice would spend funds for no access. Strict `=== false`
-    // check (not `!supportsPreimage`) so pre-existing custom wallets that
-    // pre-date the property are treated as preimage-capable by default and
-    // we only block adapters that opted out explicitly. Throws
-    // UnsupportedWalletError (NOT PaymentFailedError) since no payment is
-    // attempted — callers that distinguish payment failures from config
-    // failures can catch the two separately.
-    if (wallet.supportsPreimage === false) {
-      throw new UnsupportedWalletError(
-        "configured wallet does not return Lightning payment preimages, " +
-          "which L402 requires. Use Strike, LND, or a compatible NWC " +
-          "wallet (CoinOS, CLINK, Alby Hub) instead.",
-      );
+      reservationId = this._budget.reserve(amountSats, domain);
     }
 
     let preimage: string;
     try {
-      preimage = await wallet.payInvoice(challenge.invoice);
+      // Pay the invoice
+      const wallet = await this._getWallet();
+
+      // Fail fast on wallets that EXPLICITLY can't surface the preimage — the
+      // L402 retry can't construct the Authorization header without one, so
+      // paying the invoice would spend funds for no access. Strict `=== false`
+      // check (not `!supportsPreimage`) so pre-existing custom wallets that
+      // pre-date the property are treated as preimage-capable by default and
+      // we only block adapters that opted out explicitly. Throws
+      // UnsupportedWalletError (NOT PaymentFailedError) since no payment is
+      // attempted — callers that distinguish payment failures from config
+      // failures can catch the two separately.
+      if (wallet.supportsPreimage === false) {
+        throw new UnsupportedWalletError(
+          "configured wallet does not return Lightning payment preimages, " +
+            "which L402 requires. Use Strike, LND, or a compatible NWC " +
+            "wallet (CoinOS, CLINK, Alby Hub) instead.",
+        );
+      }
+
+      try {
+        preimage = await wallet.payInvoice(challenge.invoice);
+      } catch (e) {
+        this.spendingLog.record(
+          domain,
+          parsed.pathname,
+          amountSats,
+          "",
+          false,
+          macaroonValue ?? "",
+        );
+        if (e instanceof L402Error) throw e;
+        throw new PaymentFailedError(
+          String(e instanceof Error ? e.message : e),
+          challenge.invoice,
+        );
+      }
     } catch (e) {
-      this.spendingLog.record(
-        domain,
-        parsed.pathname,
-        amountSats,
-        "",
-        false,
-        macaroonValue ?? "",
-      );
-      if (e instanceof L402Error) throw e;
-      throw new PaymentFailedError(
-        String(e instanceof Error ? e.message : e),
-        challenge.invoice,
-      );
+      // Anything between reserve and commit failed (unsupported wallet, wallet
+      // resolution, or the payment itself). Release the reservation so it stops
+      // counting against the budget, then propagate.
+      if (this._budget && reservationId !== null) {
+        this._budget.release(reservationId);
+      }
+      throw e;
     }
 
-    // Record successful payment. `amountSats` is always known by this point —
-    // unknown amounts were refused above — so every payment the client makes
-    // lands in the budget and the log, with no silent gaps.
-    if (this._budget) {
-      this._budget.recordPayment(amountSats);
+    // Payment settled. Commit the reservation as a real spend. `amountSats` is
+    // always known by this point — unknown amounts were refused above — so
+    // every payment the client makes lands in the budget and the log, with no
+    // silent gaps. The Wallet interface surfaces only the preimage, not the
+    // routing fee, so we commit the invoice principal; if a wallet ever exposes
+    // the fee, commit `amountSats + fee` here instead.
+    if (this._budget && reservationId !== null) {
+      this._budget.commit(reservationId, amountSats);
     }
     this.spendingLog.record(
       domain,
