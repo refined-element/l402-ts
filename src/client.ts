@@ -6,7 +6,10 @@
 
 import { classifyMissingAmount, extractAmountSats } from "./bolt11.js";
 import { BudgetController } from "./budget.js";
-import { findPaymentChallenge } from "./challenge.js";
+import {
+  buildMppDraft00Authorization,
+  findPaymentChallenge,
+} from "./challenge.js";
 import { CredentialCache } from "./credential-cache.js";
 import {
   InvoiceAmountUnknownError,
@@ -14,8 +17,9 @@ import {
   PaymentFailedError,
   UnsupportedWalletError,
 } from "./errors.js";
+import { parsePaymentReceipt } from "./receipt.js";
 import { SpendingLog } from "./spending-log.js";
-import type { Wallet, L402Options } from "./types.js";
+import type { Wallet, L402Options, L402Response } from "./types.js";
 import { autoDetectWallet } from "./wallets/index.js";
 
 /** Body type compatible with fetch's RequestInit.body. */
@@ -57,7 +61,7 @@ export class L402Client {
    * a 402 with an L402 challenge, the invoice is paid and the request
    * is retried automatically.
    */
-  async fetch(url: string | URL, init?: RequestInit): Promise<Response> {
+  async fetch(url: string | URL, init?: RequestInit): Promise<L402Response> {
     const urlStr = url.toString();
     const parsed = new URL(urlStr);
     const domain = parsed.hostname;
@@ -120,6 +124,21 @@ export class L402Client {
         classifyMissingAmount(challenge.invoice),
         challenge.invoice,
       );
+    }
+
+    // Modern draft-00 sanity check: when the decoded request declares an
+    // amount, it must agree with what the BOLT11 invoice actually encodes.
+    // A mismatch means the server is telling the agent one price and the
+    // wallet another — refuse before any funds move. (Legacy MPP `amount`
+    // params stay advisory-only, unchanged.)
+    if ("request" in challenge && challenge.amount !== undefined) {
+      const declaredSats = Number(challenge.amount);
+      if (declaredSats !== amountSats) {
+        throw new L402Error(
+          `Refusing to pay: the Payment challenge declares ${declaredSats} ` +
+            `sats but the invoice encodes ${amountSats} sats`,
+        );
+      }
     }
 
     // Reserve the spend SYNCHRONOUSLY — before any `await` yields to the event
@@ -204,43 +223,65 @@ export class L402Client {
       macaroonValue ?? "",
     );
 
-    // Cache the credential and reuse CredentialCache.authorizationHeader() for retry
-    const credential = this._cache.put(domain, parsed.pathname, macaroonValue, preimage);
+    // Build the retry Authorization. Modern draft-00 credentials are
+    // SINGLE-USE server-side, so they are never cached — replaying one would
+    // just earn another 402. Legacy L402/MPP credentials keep the existing
+    // cache-and-reuse behavior.
+    let authorization: string;
+    if ("request" in challenge) {
+      authorization = buildMppDraft00Authorization(challenge, preimage);
+    } else {
+      const credential = this._cache.put(
+        domain,
+        parsed.pathname,
+        macaroonValue,
+        preimage,
+      );
+      authorization = CredentialCache.authorizationHeader(credential);
+    }
 
-    // Retry with appropriate authorization header (delegated to CredentialCache)
     const retryHeaders = new Headers(mergedInit.headers);
-    retryHeaders.set("Authorization", CredentialCache.authorizationHeader(credential));
+    retryHeaders.set("Authorization", authorization);
 
-    const retryResponse = await globalThis.fetch(urlStr, {
+    const retryResponse: L402Response = await globalThis.fetch(urlStr, {
       ...mergedInit,
       headers: retryHeaders,
       body: bodyBuffer,
     });
 
+    // Surface the Payment-Receipt header (MPP draft-00) when present. Parsed
+    // tolerantly: a missing or malformed receipt never fails the payment that
+    // already succeeded. The receipt carries only the payment hash, never the
+    // preimage, so it is safe to expose and store.
+    const receipt = parsePaymentReceipt(retryResponse.headers);
+    if (receipt !== null) {
+      retryResponse.paymentReceipt = receipt;
+    }
+
     return retryResponse;
   }
 
-  async get(url: string, init?: RequestInit): Promise<Response> {
+  async get(url: string, init?: RequestInit): Promise<L402Response> {
     return this.fetch(url, { ...init, method: "GET" });
   }
 
-  async post(url: string, init?: RequestInit): Promise<Response> {
+  async post(url: string, init?: RequestInit): Promise<L402Response> {
     return this.fetch(url, { ...init, method: "POST" });
   }
 
-  async put(url: string, init?: RequestInit): Promise<Response> {
+  async put(url: string, init?: RequestInit): Promise<L402Response> {
     return this.fetch(url, { ...init, method: "PUT" });
   }
 
-  async delete(url: string, init?: RequestInit): Promise<Response> {
+  async delete(url: string, init?: RequestInit): Promise<L402Response> {
     return this.fetch(url, { ...init, method: "DELETE" });
   }
 
-  async patch(url: string, init?: RequestInit): Promise<Response> {
+  async patch(url: string, init?: RequestInit): Promise<L402Response> {
     return this.fetch(url, { ...init, method: "PATCH" });
   }
 
-  async head(url: string, init?: RequestInit): Promise<Response> {
+  async head(url: string, init?: RequestInit): Promise<L402Response> {
     return this.fetch(url, { ...init, method: "HEAD" });
   }
 }

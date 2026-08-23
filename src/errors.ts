@@ -74,6 +74,25 @@ export class InvoiceExpiredError extends L402Error {
   }
 }
 
+/**
+ * The MPP draft-00 payment challenge has already expired.
+ *
+ * Thrown BEFORE attempting payment when a modern `Payment` challenge carries
+ * an `expires` timestamp in the past — the server will not honor a credential
+ * built from an expired challenge, so paying the invoice would spend sats for
+ * no access. No funds are spent. Request the resource again to receive a
+ * fresh challenge.
+ */
+export class ChallengeExpiredError extends L402Error {
+  constructor(public readonly expires: string) {
+    super(
+      `Payment challenge expired at ${expires}; refusing to pay. ` +
+        `Request the resource again for a fresh challenge.`,
+    );
+    this.name = "ChallengeExpiredError";
+  }
+}
+
 /** Failed to parse L402 challenge from WWW-Authenticate header. */
 export class ChallengeParseError extends L402Error {
   constructor(

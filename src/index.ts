@@ -42,8 +42,13 @@ export {
   parseChallenge,
   findL402Challenge,
   parseMppChallenge,
+  parseMppDraft00Challenge,
+  buildMppDraft00Authorization,
   findPaymentChallenge,
 } from "./challenge.js";
+
+// Payment receipts (MPP draft-00)
+export { parsePaymentReceipt } from "./receipt.js";
 
 // BOLT11 parsing
 export { extractAmountSats, classifyMissingAmount } from "./bolt11.js";
@@ -64,6 +69,7 @@ export {
   BudgetExceededError,
   PaymentFailedError,
   InvoiceExpiredError,
+  ChallengeExpiredError,
   ChallengeParseError,
   NoWalletError,
   UnsupportedWalletError,
@@ -83,12 +89,16 @@ export type {
   L402CredentialMpp,
   L402Challenge,
   MppChallenge,
+  MppDraft00Challenge,
+  PaymentReceipt,
+  L402Response,
   PaymentRecord,
 } from "./types.js";
 
 // ── Module-level convenience functions (lazy singleton) ──
 
 import { L402Client } from "./client.js";
+import type { L402Response } from "./types.js";
 
 let _defaultClient: L402Client | undefined;
 
@@ -103,7 +113,7 @@ function getDefaultClient(): L402Client {
 export async function get(
   url: string,
   init?: RequestInit,
-): Promise<Response> {
+): Promise<L402Response> {
   return getDefaultClient().get(url, init);
 }
 
@@ -111,7 +121,7 @@ export async function get(
 export async function post(
   url: string,
   init?: RequestInit,
-): Promise<Response> {
+): Promise<L402Response> {
   return getDefaultClient().post(url, init);
 }
 
@@ -119,7 +129,7 @@ export async function post(
 export async function put(
   url: string,
   init?: RequestInit,
-): Promise<Response> {
+): Promise<L402Response> {
   return getDefaultClient().put(url, init);
 }
 
@@ -127,7 +137,7 @@ export async function put(
 export async function del(
   url: string,
   init?: RequestInit,
-): Promise<Response> {
+): Promise<L402Response> {
   return getDefaultClient().delete(url, init);
 }
 
@@ -135,6 +145,6 @@ export async function del(
 export async function patch(
   url: string,
   init?: RequestInit,
-): Promise<Response> {
+): Promise<L402Response> {
   return getDefaultClient().patch(url, init);
 }
