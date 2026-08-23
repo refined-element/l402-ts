@@ -109,6 +109,68 @@ export interface MppChallenge {
   realm?: string;
 }
 
+/**
+ * Modern MPP challenge per draft-httpauth-payment-00 +
+ * draft-lightning-charge-00, distinguished from the legacy profile by the
+ * presence of the `request` param.
+ *
+ * The spec-defined challenge params (`id`, `realm`, `method`, `intent`,
+ * `request`, `expires`, `digest`, `description`, `opaque`) are kept exactly
+ * as received so the credential can echo them byte-for-byte —
+ * `request` in particular is never decoded and re-encoded.
+ */
+export interface MppDraft00Challenge {
+  /** BOLT11 invoice from the decoded `request` payload. */
+  invoice: string;
+  /** Amount in satoshis (decimal string) from the decoded `request`. */
+  amount?: string;
+  /** Currency from the decoded `request` (draft-00: "sat"). */
+  currency?: string;
+  /** Payment hash from the decoded `request`, when present. */
+  paymentHash?: string;
+  /** Lightning network from the decoded `request`, when present. */
+  network?: string;
+  /** Challenge id param, as received. */
+  id?: string;
+  /** Realm param, as received. */
+  realm?: string;
+  /** Method param, as received (draft-00: "lightning"). */
+  method: string;
+  /** Intent param, as received (draft-00: "charge"). */
+  intent: string;
+  /** The encoded `request` param EXACTLY as received. */
+  request: string;
+  /** Expires param (RFC3339), as received. */
+  expires?: string;
+  /** Digest param, as received. */
+  digest?: string;
+  /** Description param, as received. */
+  description?: string;
+  /** Opaque param, as received. */
+  opaque?: string;
+}
+
+/**
+ * Payment receipt decoded from a `Payment-Receipt` response header
+ * (MPP draft-00). All fields optional — the header is parsed tolerantly.
+ * The receipt carries only the payment hash (`reference`), never the
+ * preimage, so it is safe to store.
+ */
+export interface PaymentReceipt {
+  challengeId?: string;
+  method?: string;
+  /** Payment reference — the payment hash for lightning charges. */
+  reference?: string;
+  status?: string;
+  timestamp?: string;
+}
+
+/**
+ * Response returned by `L402Client` — a standard fetch Response, plus the
+ * parsed `Payment-Receipt` header when the server sent one after payment.
+ */
+export type L402Response = Response & { paymentReceipt?: PaymentReceipt };
+
 /** Options for the L402Client. */
 export interface L402Options {
   /** Wallet adapter for paying invoices. If undefined, auto-detects. */

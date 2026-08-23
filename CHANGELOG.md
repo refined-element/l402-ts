@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.0
+
+**MPP draft-00 client support** (draft-httpauth-payment-00 + draft-lightning-charge-00), additive interop with third-party MPP servers. Existing L402 and legacy `Payment` handling are unchanged.
+
+- **Modern challenge parsing** — `parseMppDraft00Challenge` parses `Payment` challenges carrying a base64url `request` param (`id`/`realm`/`method`/`intent`/`request`/`expires` plus optional `digest`/`description`/`opaque`), including superset headers that also carry legacy `invoice=`/`amount=`/`currency=` params and multi-challenge `WWW-Authenticate` headers. Unknown params are ignored.
+- **Precedence** — `findPaymentChallenge` still prefers L402 first, then a modern draft-00 challenge, then the legacy `Payment` profile. A malformed modern challenge only falls back to legacy when the same header carries a legacy `invoice=` param.
+- **Modern credential** — `buildMppDraft00Authorization` builds `Authorization: Payment <base64url(JSON)>` with a byte-exact challenge echo and a lowercase-hex preimage payload. `L402Client` uses it on the retry; legacy challenges keep the legacy formats.
+- **Receipts** — the `Payment-Receipt` response header is parsed tolerantly (`parsePaymentReceipt`) and exposed as `paymentReceipt` on the returned response.
+- **Single-use** — modern credentials are never cached (they are single-use server-side); L402 credential caching is unchanged.
+- **Funds safety** — an expired modern challenge throws `ChallengeExpiredError` before any payment, and a modern challenge whose declared amount disagrees with the BOLT11 invoice amount is refused.
+
 ## 0.6.1
 
 **Security fix — upgrade recommended.** Completes 0.6.0's "refuse an invoice whose amount can't be positively bounded" guarantee by closing two remaining ways an unbounded or ambiguous invoice could still be paid:
