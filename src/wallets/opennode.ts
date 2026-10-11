@@ -8,6 +8,7 @@
 
 import type { Wallet } from "../types.js";
 import { PaymentFailedError } from "../errors.js";
+import { userAgentHeaders } from "../user-agent.js";
 
 export class OpenNodeWallet implements Wallet {
   readonly supportsPreimage = false;
@@ -36,6 +37,7 @@ export class OpenNodeWallet implements Wallet {
         headers: {
           Authorization: this._apiKey,
           "Content-Type": "application/json",
+          ...userAgentHeaders(),
         },
         body: JSON.stringify({
           type: "ln",
