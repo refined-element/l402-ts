@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { L402Client } from "../src/client.js";
-import { USER_AGENT, isBrowserLike } from "../src/user-agent.js";
+import {
+  USER_AGENT,
+  isBrowserLike,
+  resolvePackageVersion,
+} from "../src/user-agent.js";
 import { LndWallet } from "../src/wallets/lnd.js";
 import { OpenNodeWallet } from "../src/wallets/opennode.js";
 import { StrikeWallet } from "../src/wallets/strike.js";
@@ -52,8 +56,11 @@ describe("User-Agent", () => {
   });
 
   it("is l402-ts/<package.json version>", () => {
-    expect(USER_AGENT).toMatch(/^l402-ts\/\d+\.\d+\.\d+$/);
     expect(USER_AGENT).toBe(`l402-ts/${pkg.version}`);
+  });
+
+  it("falls back to 0.0.0-dev when no version was injected", () => {
+    expect(resolvePackageVersion(undefined)).toBe("0.0.0-dev");
   });
 
   it("is sent on the request that receives the 402 and on the paid retry", async () => {
@@ -110,6 +117,7 @@ describe("User-Agent", () => {
 
   it("is skipped, without throwing, in a browser-like environment", async () => {
     vi.stubGlobal("window", {});
+    vi.stubGlobal("document", {});
     const fetchMock = mockL402Fetch();
     globalThis.fetch = fetchMock;
 
@@ -126,15 +134,17 @@ describe("User-Agent", () => {
       expect(isBrowserLike()).toBe(false);
     });
 
-    it("is true when a window global is present", () => {
-      expect(
-        isBrowserLike({ window: {}, process: { versions: { node: "22.0.0" } } }),
-      ).toBe(true);
+    it("is true when both window and document globals are present", () => {
+      expect(isBrowserLike({ window: {}, document: {} })).toBe(true);
     });
 
-    it("is true when process.versions.node is absent", () => {
-      expect(isBrowserLike({})).toBe(true);
-      expect(isBrowserLike({ process: { versions: {} } })).toBe(true);
+    it("is false with only one of window or document", () => {
+      expect(isBrowserLike({ window: {} })).toBe(false);
+      expect(isBrowserLike({ document: {} })).toBe(false);
+    });
+
+    it("is false in a worker/edge runtime without process.versions.node", () => {
+      expect(isBrowserLike({})).toBe(false);
     });
   });
 

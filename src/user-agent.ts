@@ -13,25 +13,34 @@
  */
 declare const __PKG_VERSION__: string | undefined;
 
+/** The injected version, or `0.0.0-dev` when none was injected (unbuilt source). */
+export function resolvePackageVersion(injected: unknown): string {
+  return typeof injected === "string" ? injected : "0.0.0-dev";
+}
+
 /** The package version, or `0.0.0-dev` when running unbuilt source. */
-export const PACKAGE_VERSION: string =
-  typeof __PKG_VERSION__ === "string" ? __PKG_VERSION__ : "0.0.0-dev";
+export const PACKAGE_VERSION: string = resolvePackageVersion(
+  typeof __PKG_VERSION__ === "undefined" ? undefined : __PKG_VERSION__,
+);
 
 /** The User-Agent value this library sends: `l402-ts/<version>`. */
 export const USER_AGENT = `l402-ts/${PACKAGE_VERSION}`;
 
 interface EnvLike {
   window?: unknown;
-  process?: { versions?: { node?: string } };
+  document?: unknown;
 }
 
 /**
- * True when the runtime looks like a browser, where `fetch` forbids setting
- * `User-Agent`. Defaults to inspecting `globalThis`; pass an object to test.
+ * True when the runtime looks like a browser (both `window` and `document`
+ * globals exist), where `fetch` forbids setting `User-Agent`. Workers and
+ * edge runtimes have neither, so they keep the header. Defaults to inspecting
+ * `globalThis`; pass an object to test.
  */
 export function isBrowserLike(env: EnvLike = globalThis as EnvLike): boolean {
-  if (typeof env.window !== "undefined") return true;
-  return typeof env.process?.versions?.node !== "string";
+  return (
+    typeof env.window !== "undefined" && typeof env.document !== "undefined"
+  );
 }
 
 /**
