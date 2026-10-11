@@ -28,6 +28,9 @@
 // Client
 export { L402Client } from "./client.js";
 
+// User-Agent sent on every request (`l402-ts/<version>`)
+export { USER_AGENT } from "./user-agent.js";
+
 // Budget
 export { BudgetController } from "./budget.js";
 

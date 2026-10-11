@@ -20,6 +20,7 @@ import {
 import { parsePaymentReceipt } from "./receipt.js";
 import { SpendingLog } from "./spending-log.js";
 import type { Wallet, L402Options, L402Response } from "./types.js";
+import { applyUserAgent } from "./user-agent.js";
 import { autoDetectWallet } from "./wallets/index.js";
 
 /** Body type compatible with fetch's RequestInit.body. */
@@ -68,7 +69,7 @@ export class L402Client {
 
     // Merge default fetch options with per-request options
     const mergedInit = { ...this._fetchOptions, ...init };
-    const headers = new Headers(mergedInit.headers);
+    const headers = applyUserAgent(new Headers(mergedInit.headers));
 
     // Buffer the body for potential retry (fetch body is one-use)
     let bodyBuffer: FetchBody | null = null;
@@ -240,7 +241,7 @@ export class L402Client {
       authorization = CredentialCache.authorizationHeader(credential);
     }
 
-    const retryHeaders = new Headers(mergedInit.headers);
+    const retryHeaders = applyUserAgent(new Headers(mergedInit.headers));
     retryHeaders.set("Authorization", authorization);
 
     const retryResponse: L402Response = await globalThis.fetch(urlStr, {

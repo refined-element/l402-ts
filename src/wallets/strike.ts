@@ -6,6 +6,7 @@
 
 import type { Wallet } from "../types.js";
 import { PaymentFailedError } from "../errors.js";
+import { userAgentHeaders } from "../user-agent.js";
 
 export class StrikeWallet implements Wallet {
   readonly supportsPreimage = true;
@@ -31,6 +32,7 @@ export class StrikeWallet implements Wallet {
     const headers = {
       Authorization: `Bearer ${this._apiKey}`,
       "Content-Type": "application/json",
+      ...userAgentHeaders(),
     };
 
     // Step 1: Create payment quote

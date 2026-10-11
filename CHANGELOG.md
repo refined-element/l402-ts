@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Versioned User-Agent** — every HTTP request the library sends (the request that receives the 402, the paid retry, and the Strike, LND, and OpenNode wallet API calls) carries `User-Agent: l402-ts/<version>`, so servers can identify this client. A `User-Agent` you supply, per request or through `fetchOptions`, takes precedence. The header is skipped in browser-like runtimes, where `fetch` forbids setting it. The version is injected at build time; nothing reads `package.json` at runtime. `USER_AGENT` is exported.
+
 ## 0.8.0
 
 **MPP draft-00 client support** (draft-httpauth-payment-00 + draft-lightning-charge-00), additive interop with third-party MPP servers. Existing L402 and legacy `Payment` handling are unchanged.

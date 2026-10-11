@@ -6,6 +6,7 @@
 
 import type { Wallet } from "../types.js";
 import { PaymentFailedError } from "../errors.js";
+import { userAgentHeaders } from "../user-agent.js";
 
 export class LndWallet implements Wallet {
   readonly supportsPreimage = true;
@@ -26,6 +27,7 @@ export class LndWallet implements Wallet {
     const headers: Record<string, string> = {
       "Grpc-Metadata-macaroon": this._macaroonHex,
       "Content-Type": "application/json",
+      ...userAgentHeaders(),
     };
 
     let response: Response;

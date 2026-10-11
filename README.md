@@ -65,6 +65,8 @@ That's it. Every L402-protected API you call will automatically get paid.
    - The request is retried with `Authorization: L402 {macaroon}:{preimage}`
 4. Credentials are cached — subsequent requests to the same endpoint don't re-pay
 
+Every request (including wallet API calls) sends `User-Agent: l402-ts/<version>` unless you set your own `User-Agent`; browsers forbid setting it, so it's skipped there.
+
 ## Wallet Configuration
 
 Set environment variables for your wallet. The library auto-detects in priority order:
