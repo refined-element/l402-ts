@@ -74,7 +74,7 @@ Set environment variables for your wallet. The library auto-detects in priority 
 | Priority | Wallet | Environment Variables | Preimage | Notes |
 |----------|--------|-----------------------|----------|-------|
 | 1 | LND | `LND_REST_HOST` + `LND_MACAROON_HEX` | Yes | Requires running a node |
-| 2 | NWC | `NWC_CONNECTION_STRING` | Yes | CoinOS, CLINK, Alby Hub compatible |
+| 2 | NWC | `NWC_CONNECTION_STRING` | Yes | CoinOS, CLINK, Alby Hub, Rizful compatible |
 | 3 | Strike | `STRIKE_API_KEY` | Yes | No infrastructure required |
 | 4 | OpenNode | `OPENNODE_API_KEY` | No | **Cannot be used for L402** — every 402 throws `UnsupportedWalletError` |
 
